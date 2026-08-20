@@ -1,0 +1,32 @@
+# Welcome {.unnumbered}
+
+This is the reference site for **optimization-lab** — a from-scratch exploration of
+applied mathematical optimization, built while working through Steven L. Brunton's
+[*Optimization Bootcamp*](https://www.youtube.com/@eigensteve) [@brunton2026optimization].
+
+Three commitments shape everything here, carried over from the project's
+[README](https://github.com/):
+
+1. **Build it, don't just import it.** Every core algorithm is implemented from scratch
+   in the `optimlab` Python package. Mature libraries are used deliberately as
+   *correctness oracles* and *scale-up backends*, never as a substitute.
+2. **Port a problem in, get solvers for free.** Every problem speaks one small `Problem`
+   interface; every solver — from-scratch or backend — runs against any of them.
+3. **See it, don't just prove it.** Every technique ships with an interactive visual —
+   either right on the page (a live-rendered Plotly figure) or as a reactive
+   [marimo](https://marimo.io) app you can drag sliders on.
+
+## How this site is organized
+
+Chapters are built up progressively, each landing once the corresponding `optimlab`
+module is implemented and tested — see the project's
+[`ROADMAP.md`](https://github.com/) for the full phased plan. A chapter here is never
+published ahead of the code it's explaining.
+
+## Reading this site vs. reading the code
+
+This site is the narrative — definitions, theorems, the "why" behind a design choice.
+The `optimlab` package docstrings are the precise reference for a given function's
+signature and behavior. When the two disagree, trust the code and open an issue: the
+docstrings are regenerated from tests that actually run; this prose is written by hand
+and can drift.

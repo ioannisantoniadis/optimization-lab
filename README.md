@@ -64,20 +64,45 @@ tests/                Correctness + convergence tests for every solver, against 
 
 ## Status
 
-Early build. See [`ROADMAP.md`](ROADMAP.md) for the phased plan — currently finishing
-**Phase 1** (core framework + Chapter 1–2 foundations). Done so far: the `Problem` /
-solver framework, 9 from-scratch gradient-based solvers, 8 benchmark landscapes, a
-colorblind-validated Plotly viz layer (contour/surface/"solver race"/convergence plots),
-and a first reactive marimo app. Still open: the Chapter 1–2 docs page.
+Early build. See [`ROADMAP.md`](ROADMAP.md) for the phased plan — **Phase 1** (core
+framework + Chapter 1–2 foundations) is now complete: the `Problem` / solver framework,
+9 from-scratch gradient-based solvers, 8 benchmark landscapes, a colorblind-validated
+Plotly viz layer, a first reactive marimo app, and a rendered [Quarto](https://quarto.org)
+docs site walking through convexity, gradients, and the solver zoo with live figures.
+
+> The site's navbar/footer GitHub links are still placeholders (`https://github.com/`)
+> in `docs/_quarto.yml` — update `book.site-url` / `book.repo-url` once this repo has a
+> real GitHub remote.
 
 ## Getting started
 
 ```bash
-uv sync --extra viz --extra dev   # install deps (add --extra backends once Phase 2 lands)
-uv run pytest                     # run the solver correctness/convergence tests
+uv sync --extra viz --extra dev --extra docs   # add --extra backends once Phase 2 lands
+uv run pytest                                  # run the solver correctness/convergence tests
 
 # Interactively explore solvers racing across a landscape (opens in your browser):
 uv run marimo edit notebooks/marimo/gradient_descent_explorer.py
+```
+
+### Building the docs site
+
+The site is a [Quarto](https://quarto.org) book that executes real `optimlab` code at
+render time (via a Jupyter kernel backed by this project's own venv), so figures are
+never hand-copied images — they're regenerated from the actual solvers each render.
+
+```bash
+# One-time: install Quarto (https://quarto.org/docs/get-started/), then register the
+# venv as a Jupyter kernel so Quarto executes code cells against it:
+uv run python -m ipykernel install --user --name optimlab --display-name "optimlab (uv)"
+
+# Regenerate the embedded marimo snapshot (see docs/chapters/01-foundations.qmd for why
+# this is a static export, not a live WASM app — optimlab depends on JAX, which has no
+# WebAssembly build, so it can't run client-side in a browser-only marimo export):
+uv run marimo export html notebooks/marimo/gradient_descent_explorer.py \
+    -o docs/embeds/gradient_descent_explorer.html -f
+
+quarto preview docs   # live-reloading local preview
+quarto render docs    # one-shot build to docs/_site/
 ```
 
 ## References

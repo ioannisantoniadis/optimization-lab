@@ -1,0 +1,25 @@
+/*-- scss:defaults --*/
+// Brand tokens lifted straight from optimlab.viz.theme / the dataviz skill's reference
+// palette, so the site chrome and the embedded Plotly figures read as one system.
+$primary:    #2a78d6; // categorical slot 1 (blue) — same hue used for headings/links here
+$body-bg:    #fcfcfb; // chart surface (light)
+$body-color: #0b0b0b; // primary ink (light)
+$link-color: #2a78d6;
+$font-family-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+$font-family-monospace: "SF Mono", Menlo, Consolas, monospace;
+$headings-font-weight: 600;
+$toc-color: #52514e;
+$code-block-bg: #f9f9f7;
+
+/*-- scss:rules --*/
+.figure-caption, figcaption {
+  color: #52514e;
+  font-size: 0.9em;
+}
+
+iframe.marimo-embed {
+  width: 100%;
+  height: 780px;
+  border: 1px solid #e1e0d9;
+  border-radius: 6px;
+}

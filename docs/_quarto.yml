@@ -1,0 +1,50 @@
+project:
+  type: book
+  output-dir: _site
+
+book:
+  title: "optimization-lab"
+  subtitle: "A living lab for applied mathematical optimization"
+  description: >-
+    From-scratch algorithms, real solver comparisons, cross-domain problems, and
+    intuition for what a million-parameter non-convex loss surface actually looks like.
+  site-url: "https://github.com/"  # placeholder — update once the GitHub repo exists
+  repo-url: "https://github.com/"  # placeholder — update once the GitHub repo exists
+  repo-actions: [edit, issue]
+  page-footer:
+    left: >-
+      Built while working through Steven L. Brunton's *Optimization Bootcamp*.
+      Source on [GitHub](https://github.com/).
+    right: "Rendered with [Quarto](https://quarto.org)."
+  chapters:
+    - index.qmd
+    - chapters/01-foundations.qmd
+  navbar:
+    background: light
+
+format:
+  html:
+    theme:
+      - cosmo
+      - theme.scss
+    toc: true
+    number-sections: true
+    number-depth: 2
+    code-fold: show
+    code-tools: true
+    fig-align: center
+    smooth-scroll: true
+    grid:
+      sidebar-width: 260px
+      body-width: 850px
+      margin-width: 250px
+    link-external-newwindow: true
+
+execute:
+  freeze: auto
+  cache: false
+  warning: false
+
+jupyter: optimlab
+
+bibliography: references.bib

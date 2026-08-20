@@ -24,6 +24,10 @@ backends = [
     "nevergrad>=1.0",
     "pymoo>=0.6",
 ]
+docs = [
+    "jupyter>=1.0",
+    "ipykernel>=6.29",
+]
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",

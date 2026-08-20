@@ -6,7 +6,7 @@ reorganized around three repo-specific threads that the book doesn't cover: the
 cross-domain (including personal life-planning) case studies. Each phase should leave the
 repo in a working, tested, documented state — no half-finished chapters.
 
-## Phase 1 — Core framework + classical gradient-based optimization (book Ch. 1–2) — **current**
+## Phase 1 — Core framework + classical gradient-based optimization (book Ch. 1–2) — **done**
 
 - [x] `optimlab.core`: `Problem`, `OptimizeResult`, the solver call signature every
       algorithm (from-scratch or backend) shares. Autodiff-backed gradients/Hessians via
@@ -31,10 +31,23 @@ repo in a working, tested, documented state — no half-finished chapters.
       sliders and watch the solver-race and convergence plots redraw. Verified by actually
       running it (`marimo check` + `marimo export html`, then loaded in a real browser),
       not just eyeballing the source.
-- [ ] First `docs/` page rendering the Ch. 1–2 narrative (convexity, gradients, the
-      solver zoo) with embedded figures and a link to the marimo app.
+- [x] First `docs/` page rendering the Ch. 1–2 narrative (convexity, gradients, the
+      solver zoo) with embedded figures and a link to the marimo app. Built as a
+      [Quarto](https://quarto.org) book (`docs/`) that executes real `optimlab` code at
+      render time via a Jupyter kernel bound to this project's venv — figures are
+      regenerated from the actual solvers on every render, never hand-copied images.
+      Verified by rendering and reviewing the real output in a browser, the same way as
+      the Phase 1 visualization slice. One real constraint surfaced and resolved this
+      way: `optimlab` depends on JAX for autodiff, and JAX has no WebAssembly build, so
+      the marimo app can't run live inside a browser-only (Pyodide) export — the docs
+      page embeds a static snapshot instead and tells readers to run the app locally for
+      genuine interactivity, rather than silently shipping something broken.
+      A GitHub Actions workflow (`.github/workflows/docs.yml`) builds and deploys to
+      GitHub Pages on push to `main`; unlike everything above, this hasn't been run for
+      real yet (no GitHub remote exists to push to) — treat it as unverified until a
+      first deploy succeeds.
 
-## Phase 2 — Convex workhorses: linear programming & least squares (Ch. 3–4)
+## Phase 2 — Convex workhorses: linear programming & least squares (Ch. 3–4) — **next up**
 
 - Simplex method from scratch + polytope/vertex visualization in 3D; brief detour into
   why LP vertices are the right mental model for high-dimensional feasible regions.
