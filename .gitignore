@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv/
+uv.lock.bak
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.marimo.lock
+site/
+docs/_site/
+docs/.quarto/
+.DS_Store
+*.log
+
+# Copyrighted source material ("for personal use only, not for further distribution") —
+# keep it on disk locally for reference, never commit it.
+OptimizationBootcamp.pdf
