@@ -1,5 +1,11 @@
-"""Shared Plotly figure helpers (surfaces, trajectories, spectra, "solver race" plots).
+from optimlab.viz.compare import add_trajectory, convergence_figure, race_figure, solver_color_map
+from optimlab.viz.landscape import contour_figure, surface_figure
 
-Not yet implemented — lands alongside the Phase 1 marimo app and docs page. See
-ROADMAP.md, Phase 1.
-"""
+__all__ = [
+    "add_trajectory",
+    "contour_figure",
+    "convergence_figure",
+    "race_figure",
+    "solver_color_map",
+    "surface_figure",
+]

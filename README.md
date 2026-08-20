@@ -64,15 +64,20 @@ tests/                Correctness + convergence tests for every solver, against 
 
 ## Status
 
-Early build. See [`ROADMAP.md`](ROADMAP.md) for the phased plan — currently on **Phase 1**
-(core framework + Chapter 1–2 foundations: convexity, gradients, and the classical
-gradient-based solver family).
+Early build. See [`ROADMAP.md`](ROADMAP.md) for the phased plan — currently finishing
+**Phase 1** (core framework + Chapter 1–2 foundations). Done so far: the `Problem` /
+solver framework, 9 from-scratch gradient-based solvers, 8 benchmark landscapes, a
+colorblind-validated Plotly viz layer (contour/surface/"solver race"/convergence plots),
+and a first reactive marimo app. Still open: the Chapter 1–2 docs page.
 
 ## Getting started
 
 ```bash
-uv sync                 # install dependencies into .venv
-uv run pytest           # run the solver correctness/convergence tests
+uv sync --extra viz --extra dev   # install deps (add --extra backends once Phase 2 lands)
+uv run pytest                     # run the solver correctness/convergence tests
+
+# Interactively explore solvers racing across a landscape (opens in your browser):
+uv run marimo edit notebooks/marimo/gradient_descent_explorer.py
 ```
 
 ## References

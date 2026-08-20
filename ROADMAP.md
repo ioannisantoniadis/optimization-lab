@@ -21,10 +21,16 @@ repo in a working, tested, documented state — no half-finished chapters.
       standalone Armijo/Wolfe line search.
 - [x] Convergence tests against known optima; ill-conditioning demo (why GD zig-zags,
       why Newton doesn't).
-- [ ] `optimlab.viz`: shared Plotly theme + trajectory-over-contour/surface plots +
-      "solver race" comparison plots (multiple optimizers, one problem, one figure).
-- [ ] First `notebooks/marimo/` app: pick a 2D benchmark function and an optimizer, drag
-      learning-rate/momentum sliders, watch the trajectory redraw live.
+- [x] `optimlab.viz`: shared Plotly theme (colorblind-validated categorical palette +
+      sequential blue ramp, light/dark chart chrome) + contour/surface landscape plots +
+      "solver race" and convergence-comparison plots. Colors and layout checked by
+      rendering to PNG and reviewing, not just built-without-erroring (a first pass had a
+      real colorbar/legend collision, caught this way and fixed).
+- [x] First `notebooks/marimo/` app (`gradient_descent_explorer.py`): pick a landscape, a
+      starting point, and one or more solvers; drag learning-rate/momentum/iteration
+      sliders and watch the solver-race and convergence plots redraw. Verified by actually
+      running it (`marimo check` + `marimo export html`, then loaded in a real browser),
+      not just eyeballing the source.
 - [ ] First `docs/` page rendering the Ch. 1–2 narrative (convexity, gradients, the
       solver zoo) with embedded figures and a link to the marimo app.
 

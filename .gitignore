@@ -9,6 +9,7 @@ uv.lock.bak
 .mypy_cache/
 .ipynb_checkpoints/
 .marimo.lock
+__marimo__/
 site/
 docs/_site/
 docs/.quarto/
