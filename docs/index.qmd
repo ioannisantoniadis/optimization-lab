@@ -7,8 +7,7 @@ but the site draws on the standard optimization literature broadly (see the
 bibliography and the project's [`README`](https://github.com/ioannisantoniadis/optimization-lab)
 for the full reading list) rather than following any one source chapter by chapter.
 
-Three commitments shape everything here, carried over from the project's
-[README](https://github.com/ioannisantoniadis/optimization-lab):
+Three commitments shape everything here:
 
 1. **Build it, don't just import it.** Every core algorithm is implemented from scratch
    in the `optimlab` Python package. Mature libraries are used deliberately as

@@ -18,19 +18,26 @@ uv run pytest                                  # run the test suite
 ```
 
 [`uv`](https://docs.astral.sh/uv/) manages the Python environment; `uv run <cmd>` runs
-a command inside it without activating a venv by hand.
+a command inside it without activating a venv by hand. Add `--extra backends` for the
+cvxpy-based correctness oracle (`optimlab.backends.cvxpy_backend`) — everything else,
+including the scipy-based oracles, works without it.
 
 ## Repository layout
 
 ```
 src/optimlab/
   core.py         Problem / OptimizeResult / Solver — the interface everything else uses
-  optimizers/     From-scratch solvers: gradient descent, momentum, Adam family,
-                  Newton, BFGS/L-BFGS, line search
+  optimizers/     From-scratch solvers: gradient descent, momentum, Adam family, Newton,
+                  BFGS/L-BFGS, line search, simplex (LP), conjugate gradient, Gauss-Newton
+                  (nonlinear least squares), projected gradient (box constraints)
+  linalg/         SVD / condition number, least squares (+ minimum-norm, rank-deficient),
+                  ridge regression, equality-constrained least squares / QP
   landscapes/     Benchmark test functions (sphere, Rosenbrock, Rastrigin, ...) with
                   metadata (known minima, convexity, domain)
-  viz/            Plotly figure helpers (landscapes, solver-comparison plots)
-  backends/       Adapters to scipy / cvxpy / jax / optuna / nevergrad / pymoo
+  viz/            Plotly figure helpers: landscapes, solver-comparison plots, LP feasible
+                  regions, regression fit/residuals, SVD conditioning, ridge paths
+  backends/       Correctness-oracle adapters: scipy (core dep) and cvxpy (needs the
+                  `backends` extra) for LP, least squares, and QP
   problems/       Cross-domain problems (physics, economics, ML, ...) — not yet populated
 docs/             Quarto site: theory + write-ups, with figures executed from real code
 notebooks/marimo/ Interactive apps (see below)

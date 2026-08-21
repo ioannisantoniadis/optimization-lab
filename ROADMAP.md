@@ -77,16 +77,77 @@ half-finished chapters.
       before, just in the 3D scene this time), then re-rendered the live docs site and
       reviewed it in a browser.
 
-## Phase 2 — Convex workhorses: linear programming & least squares — **next up**
+## Phase 2 — Convex workhorses: linear programming & least squares — **done**
 
-- Simplex method from scratch + polytope/vertex visualization in 3D; brief detour into
-  why LP vertices are the right mental model for high-dimensional feasible regions.
-- Least-squares regression, SVD, condition number, ridge/Tikhonov regularization,
-  constrained least-squares, QP, Gauss-Newton, conjugate gradient.
-- `optimlab.backends`: scipy.optimize / cvxpy adapters, used here first as correctness
-  oracles for the from-scratch simplex and CG implementations.
+- [x] `optimlab.optimizers.linear_programming`: two-phase full-tableau simplex with
+      Bland's rule (provably no cycling). `LinearProgram`/`LPResult` are their own types,
+      not `Problem`/`OptimizeResult` — simplex walks polytope vertices, it doesn't follow
+      a gradient. Verified against `scipy.optimize.linprog` on 500+ random bounded-
+      feasible LPs (0 mismatches) plus hand-verified textbook cases (equality constraints
+      needing phase-1 artificials, mixed constraints, infeasible, unbounded, no
+      constraints beyond `x >= 0`). One interesting non-bug surfaced by the randomized
+      check: a single instance where scipy/HiGHS reported "infeasible" for an LP
+      independently confirmed (via an explicit feasible unbounded recession direction) to
+      genuinely be unbounded — not a bug here, see the comment in
+      `tests/test_linear_programming.py`.
+- [x] `optimlab.viz.polytope`: 2D feasible-region shading (pairwise half-plane
+      intersection + angular sort around the centroid) with the simplex path overlaid
+      vertex to vertex. Scoped down from the original "3D" plan in this bullet once 2D
+      turned out to already carry the full pedagogical point (LP optima sit at *vertices*
+      — a 2D polygon makes that exactly as visible as a 3D polytope would, for
+      meaningfully less implementation risk); 3D stays an option later if a specific demo
+      needs it. Verified by rendering to PNG and reviewing it — first pass had needlessly
+      zoomed-out default bounds, fixed with a two-pass rough-then-tight approach.
+- [x] `optimlab.linalg`: `svd`/`condition_number`, `least_squares` (one pseudoinverse
+      formula covering ordinary, minimum-norm-underdetermined, and rank-deficient cases),
+      `ridge_regression` (same SVD, shrunk by `s/(s^2+alpha)` instead of divided by `s`),
+      `equality_constrained_least_squares` / `equality_constrained_qp` (exact KKT solve).
+      Verified against `numpy.linalg.lstsq`, closed-form ridge, and
+      `scipy.optimize.minimize`.
+- [x] `optimlab.optimizers.conjugate_gradient`: linear CG for SPD systems, framed as
+      minimizing the equivalent quadratic so it shares `OptimizeResult` with every other
+      solver. Verified: exact solution within the textbook `n`-step bound on random SPD
+      systems, and (in `docs/chapters/03-least-squares.qmd`) against Chapter 1's own
+      ill-conditioned quadratic — 2 steps for CG vs. ~900 for gradient descent on the
+      identical system.
+- [x] `optimlab.optimizers.gauss_newton`: nonlinear least squares via linearized-residual
+      steps (`NonlinearLeastSquaresProblem`, JAX-Jacobian by default, finite-difference
+      fallback). Verified: exact parameter recovery on noiseless exponential-decay data,
+      matches `scipy.optimize.least_squares` on noisy data, one-step-exact on a linear
+      residual.
+- [x] `optimlab.optimizers.projected_gradient`: box-constrained gradient descent (a
+      general `Problem` plus bounds, not QP-only), using the *projected*-gradient norm as
+      its convergence criterion since the raw gradient needn't vanish at a boundary
+      optimum. Verified against `scipy.optimize.minimize(method="L-BFGS-B", bounds=...)`.
+- [x] `optimlab.backends`: `scipy_linprog` / `scipy_nonlinear_least_squares` (core deps
+      only) and `cvxpy_linprog` / `cvxpy_qp` (the optional `backends` extra — absent from
+      `optimlab.backends`'s namespace entirely, not just erroring, when cvxpy isn't
+      installed). Used as correctness oracles for simplex and Gauss-Newton, and — for
+      general QP with both equality *and* inequality constraints together, the one case
+      neither from-scratch QP function covers alone — as the reach-for-it option.
+      Verified: scipy and cvxpy each independently match the from-scratch solvers, and
+      cross-checked against each other directly on a harder mixed-constraint LP.
+- [x] `optimlab.viz.regression`: `regression_fit_figure` + `residuals_figure` (a
+      diagnostic that works regardless of feature count), `svd_conditioning_figure` (the
+      unit circle becoming an ellipse under a 2x2 matrix — condition number made
+      literal), `ridge_path_figure` (coefficient shrinkage vs. `alpha`). Verified by
+      rendering to PNG and reviewing it; the ridge path's log-axis had cluttered minor
+      ticks at this figure's width, fixed to decade-only ticks.
+- [x] Two docs chapters (`02-linear-programming.qmd`, `03-least-squares.qmd`), executing
+      real code the same way Chapter 1 does. Caught and fixed three real issues by
+      actually rendering and reading the output rather than trusting the source: LaTeX
+      accidentally wrapped in code backticks instead of math delimiters (twice); a
+      cross-reference chapter number that leaked the *book's* chapter numbering
+      (`Chapter 4`/`Chapter 6`) instead of this site's own (fixed to `Chapter 3` and a
+      phase-based reference respectively — exactly the book-centering slip this repo is
+      trying to avoid); and a genuine bug in the conjugate-gradient demo, where the
+      quadratic-minus-linear objective `0.5 x^T A x - b^T x` legitimately goes negative
+      near the optimum, which `convergence_figure`'s log-scale clipping (`max(series,
+      1e-16)`) flattened into a useless flat line for *both* solvers — switched that one
+      figure to the gradient-norm metric, which stays positive and is the natural
+      residual metric for `Ax=b` regardless.
 
-## Phase 3 — Nonsmooth, gradient-free, and global optimization
+## Phase 3 — Nonsmooth, gradient-free, and global optimization — **next up**
 
 - Proximal gradient, Nelder–Mead, simulated annealing, a from-scratch genetic algorithm,
   particle swarm.

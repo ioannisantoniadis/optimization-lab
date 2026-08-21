@@ -1,0 +1,228 @@
+---
+title: "Least Squares: SVD, Conditioning, and Regularization"
+---
+
+Linear programming's objective had no curvature at all. Least squares sits at the other
+extreme: a quadratic objective, $f(x) = \|Ax - b\|^2$, is the *most* curved kind of
+function this repo deals with in the sense that its curvature (the Hessian,
+$2A^\top A$) doesn't even depend on $x$ — it's the same everywhere. That's exactly what
+makes the whole family of problems in this chapter solvable in closed form, via one
+decomposition: the singular value decomposition of $A$.
+
+## The SVD, and what it says about a linear system
+
+::: {.callout-note title="Definition — Singular value decomposition"}
+Any matrix $A \in \mathbb{R}^{m \times n}$ factors as $A = U \Sigma V^\top$, with $U$
+and $V$ orthogonal and $\Sigma$ diagonal with nonnegative entries $\sigma_1 \ge \sigma_2
+\ge \cdots \ge 0$ (the *singular values*).
+:::
+
+Geometrically, $A$ maps the unit sphere to an ellipsoid whose semi-axis lengths are
+exactly the $\sigma_i$. `optimlab.linalg.svd.condition_number` is just the ratio of the
+longest axis to the shortest:
+
+```{python}
+#| label: fig-svd-conditioning
+#| fig-cap: "The unit circle mapped through a 2x2 matrix becomes an ellipse; its semi-axes are the matrix's singular values, and their ratio is the condition number."
+import numpy as np
+from optimlab.viz import svd_conditioning_figure
+
+A = np.array([[3.0, 1.0], [0.0, 0.5]])
+svd_conditioning_figure(A).show()
+```
+
+A near-circular image means every input direction gets amplified about equally: a small
+perturbation to `b` in `Ax=b` produces a correspondingly small change in `x`. A
+needle-thin ellipse means one direction (the short axis) barely moves under `A` — so
+recovering how far you moved *along* that direction from how far `Ax` moved requires
+dividing by a tiny number, amplifying any noise in `b` by exactly the condition number.
+This isn't an abstract warning: it's the same quantity behind Chapter 1's ill-conditioned
+quadratic (Hessian `diag(1, 100)`), confirmed directly rather than just asserted twice:
+
+```{python}
+#| label: condition-number-callback
+from optimlab.linalg import condition_number
+
+print(condition_number(np.diag([1.0, 100.0])))
+```
+
+## Ordinary least squares, minimum-norm, and rank deficiency — one formula
+
+::: {.callout-note title="Definition — Least squares"}
+$$
+\min_x \|Ax - b\|_2
+$$
+:::
+
+`optimlab.linalg.least_squares` solves this via the pseudoinverse built directly from
+the SVD: $x = V \Sigma^+ U^\top b$, where $\Sigma^+$ inverts each nonzero $\sigma_i$ and
+leaves near-zero ones at exactly zero. That one formula quietly covers three cases often
+treated as separate topics — an **overdetermined** system (more rows than columns,
+the usual regression setup) gets the ordinary least-squares answer; an
+**underdetermined** system (more columns than rows, infinitely many exact solutions)
+gets the *minimum-norm* one among them for free, with no separate algorithm; and a
+**rank-deficient** matrix (some direction genuinely carries no information) has that
+direction's near-zero singular value zeroed out rather than divided by, which is what
+keeps noise from being amplified without bound.
+
+```{python}
+#| label: fig-ls-fit
+#| fig-cap: "Ordinary least squares: the fitted line minimizes total squared vertical distance to the data."
+from optimlab.linalg import least_squares
+from optimlab.viz import regression_fit_figure, residuals_figure
+
+rng = np.random.default_rng(0)
+t = np.linspace(0, 10, 40)
+y = 2.0 * t + 1.0 + rng.normal(scale=2.0, size=t.size)
+A = np.column_stack([t, np.ones_like(t)])
+
+fit = least_squares(A, y)
+print(f"slope={fit.x[0]:.3f}, intercept={fit.x[1]:.3f}, condition number={fit.condition_number:.3g}")
+regression_fit_figure(t.reshape(-1, 1), y, fit.x).show()
+```
+
+A single number (the residual norm, or even $R^2$) can hide *how* a fit is wrong. A
+residual-vs-predicted plot can't — any leftover pattern (not just "residuals are big")
+is a sign the linear model is missing something a bigger dataset won't fix:
+
+```{python}
+#| label: fig-residuals
+#| fig-cap: "Residuals scattered with no visible pattern around zero -- what a well-specified linear fit should look like."
+residuals_figure(A, y, fit.x).show()
+```
+
+## Ridge regression: trading bias for stability
+
+::: {.callout-note title="Definition — Ridge / Tikhonov regression"}
+$$
+\min_x \|Ax - b\|_2^2 + \alpha \|x\|_2^2, \qquad \alpha \ge 0
+$$
+:::
+
+`optimlab.linalg.ridge_regression` reuses the exact same SVD, just with a different
+divisor: instead of $1/\sigma_i$, each direction's contribution is scaled by
+$\sigma_i / (\sigma_i^2 + \alpha)$. A large, well-trusted singular value barely notices
+this; a small one — exactly the directions `condition_number` flags as noise-amplifying
+— gets shrunk hard. Watching every coefficient's value as $\alpha$ grows makes the
+trade-off literal: less variance (a coefficient that doesn't swing wildly with small
+data changes) bought with more bias (systematically smaller-magnitude coefficients).
+
+```{python}
+#| label: fig-ridge-path
+#| fig-cap: "Ridge's regularization path: every coefficient shrinks toward zero as alpha grows, but not at the same rate."
+from optimlab.viz import ridge_path_figure
+
+rng = np.random.default_rng(1)
+A_ridge = rng.standard_normal((30, 4))
+b_ridge = rng.standard_normal(30)
+ridge_path_figure(A_ridge, b_ridge, np.logspace(-2, 3, 40)).show()
+```
+
+## Equality-constrained least squares and QP
+
+Adding a hard linear constraint `Cx = d` to a least-squares (or any quadratic) problem
+turns "set the gradient to zero" into a small linear system rather than a direct
+formula — the KKT system `optimlab.linalg.qp.equality_constrained_qp` solves exactly:
+
+```{python}
+#| label: kkt-qp
+from optimlab.linalg import equality_constrained_least_squares
+
+# reuse the same (slope, intercept) design matrix A and data y from the OLS fit above
+C = np.array([[1.0, 1.0]])  # force slope + intercept to sum to exactly 1
+d = np.array([1.0])
+constrained = equality_constrained_least_squares(A, y, C, d)
+print(f"unconstrained fit: {fit.x}, sums to {fit.x.sum():.3f}")
+print(f"constrained fit:   {constrained}, sums to {(C @ constrained)[0]:.3f}")
+```
+
+`optimlab.optimizers.projected_gradient` handles the complementary easy case — box
+inequality constraints (`lower <= x <= upper`), solved iteratively rather than in one
+linear solve, since which bounds end up "active" isn't known in advance. General QP with
+both equality *and* general inequality constraints together needs the full KKT/active-set
+machinery a later chapter covers (constraints and duality, ROADMAP Phase 4);
+`optimlab.backends.cvxpy_qp` is the reach-for-it option in the meantime.
+
+## Nonlinear least squares: Gauss-Newton
+
+Every solver above assumes the model is *linear* in its parameters. Fitting
+$y \approx a e^{-bt}$ isn't — but Gauss-Newton makes it tractable by **linearizing the
+residuals**, not the objective, at each step, and solving the resulting linear
+least-squares problem for the update:
+
+```{python}
+#| label: fig-gauss-newton
+#| fig-cap: "Gauss-Newton fitting an exponential decay model -- residuals are nonlinear in the parameters, but each step solves a linear least-squares problem for the update."
+import jax.numpy as jnp
+import plotly.graph_objects as go
+from optimlab.optimizers import NonlinearLeastSquaresProblem, gauss_newton
+from optimlab.viz.theme import contrasting_categorical, layout_template
+
+t_nl = np.linspace(0.0, 5.0, 30)
+a_true, b_true = 2.5, 0.7
+y_nl = a_true * np.exp(-b_true * t_nl) + rng.normal(scale=0.05, size=t_nl.size)
+
+def residual(params):
+    a, b = params[0], params[1]
+    return a * jnp.exp(-b * t_nl) - y_nl
+
+problem = NonlinearLeastSquaresProblem(residual=residual, x0=np.array([1.0, 1.0]))
+gn_result = gauss_newton(problem)
+print(f"recovered a={gn_result.x[0]:.3f}, b={gn_result.x[1]:.3f} (true: {a_true}, {b_true}), "
+      f"{gn_result.n_iter} iterations")
+
+colors = contrasting_categorical()
+fig = go.Figure([
+    go.Scatter(x=t_nl, y=y_nl, mode="markers", name="data",
+               marker={"size": 7, "color": "#898781"}),
+    go.Scatter(x=t_nl, y=gn_result.x[0] * np.exp(-gn_result.x[1] * t_nl), mode="lines",
+               name="Gauss-Newton fit", line={"color": colors[0], "width": 2.5}),
+])
+fig.update_layout(**layout_template(xaxis_title="t", yaxis_title="y"))
+fig.show()
+```
+
+Gauss-Newton approximates the true Hessian of the objective with `J^\top J` (the
+Jacobian of the *residuals*, squared) — exact when the model fits well (residuals near
+zero) or the model is linear, an approximation otherwise. That's the same
+"use curvature, not just slope" idea as `optimlab.optimizers.newton`, specialized to sums
+of squares, and it's why convergence above takes only a handful of iterations rather
+than the hundreds a gradient-only method would need on a comparably curved problem.
+
+## Conjugate gradient: solving `Ax=b` without inverting `A`
+
+Chapter 1's ill-conditioned quadratic — Hessian `diag(1, 100)`, the demonstration of
+*why* gradient descent zig-zags — is itself a linear system in disguise: its minimum is
+exactly the solution of `Ax = b`. `optimlab.optimizers.conjugate_gradient` solves that
+system directly, and on a problem with only 2 independent directions of curvature, it
+provably needs at most 2 steps — not because it's faster per step, but because each step
+is constructed to never waste progress re-covering a direction it already handled:
+
+```{python}
+#| label: fig-cg-vs-gd
+#| fig-cap: "Conjugate gradient reaches the exact solution of the same ill-conditioned system Chapter 1's gradient descent crawled across, in as many steps as there are dimensions. Plotted as the residual norm ||Ax-b|| rather than the objective value: this quadratic's objective, 0.5x'Ax - b'x, dips negative near the optimum, which a log-scaled objective plot can't show."
+from optimlab.core import Problem
+from optimlab.optimizers import conjugate_gradient, gradient_descent
+from optimlab.viz import convergence_figure
+
+A_cg = np.diag([1.0, 100.0])
+b_cg = np.array([1.0, 100.0])  # solution: x = [1, 1]
+
+cg_result = conjugate_gradient(A_cg, b_cg, tol=1e-12)
+
+gd_problem = Problem(f=lambda x: 0.5 * x @ A_cg @ x - b_cg @ x, x0=np.zeros(2),
+                      grad=lambda x: A_cg @ x - b_cg)
+gd_result = gradient_descent(gd_problem, lr=0.0198, max_iter=1500)
+
+print(f"CG: {cg_result.n_iter} iterations, converged={cg_result.converged}")
+print(f"GD: {gd_result.n_iter} iterations, converged={gd_result.converged}")
+convergence_figure({"conjugate_gradient": cg_result, "gradient_descent": gd_result}, metric="grad_norm").show()
+```
+
+## What's next
+
+Chapters 2–3 have stayed entirely inside convex territory — every problem here has one
+answer, and the interesting question was how to reach it (or how sensitive it is to
+noise), never *which local answer*. The next phase leaves that guarantee behind:
+nonsmooth and gradient-free methods (ROADMAP Phase 3) for problems where "the" answer
+may not be unique, or may not even be reachable by following a gradient at all.

@@ -13,12 +13,13 @@ book:
   repo-actions: [edit, issue]
   page-footer:
     left: >-
-      Built while working through Steven L. Brunton's *Optimization Bootcamp*.
       Source on [GitHub](https://github.com/ioannisantoniadis/optimization-lab).
     right: "Rendered with [Quarto](https://quarto.org)."
   chapters:
     - index.qmd
     - chapters/01-foundations.qmd
+    - chapters/02-linear-programming.qmd
+    - chapters/03-least-squares.qmd
   navbar:
     background: light
 
