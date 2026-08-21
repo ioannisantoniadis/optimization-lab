@@ -20,6 +20,7 @@ book:
     - chapters/01-foundations.qmd
     - chapters/02-linear-programming.qmd
     - chapters/03-least-squares.qmd
+    - chapters/04-nonsmooth-and-global-optimization.qmd
   navbar:
     background: light
 

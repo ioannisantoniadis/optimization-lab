@@ -29,13 +29,15 @@ src/optimlab/
   core.py         Problem / OptimizeResult / Solver — the interface everything else uses
   optimizers/     From-scratch solvers: gradient descent, momentum, Adam family, Newton,
                   BFGS/L-BFGS, line search, simplex (LP), conjugate gradient, Gauss-Newton
-                  (nonlinear least squares), projected gradient (box constraints)
+                  (nonlinear least squares), projected/proximal gradient (box constraints,
+                  LASSO), Nelder-Mead, simulated annealing, genetic algorithm, particle
+                  swarm (all four gradient-free methods share ALL_SOLVERS with the rest)
   linalg/         SVD / condition number, least squares (+ minimum-norm, rank-deficient),
                   ridge regression, equality-constrained least squares / QP
   landscapes/     Benchmark test functions (sphere, Rosenbrock, Rastrigin, ...) with
                   metadata (known minima, convexity, domain)
   viz/            Plotly figure helpers: landscapes, solver-comparison plots, LP feasible
-                  regions, regression fit/residuals, SVD conditioning, ridge paths
+                  regions, regression fit/residuals, SVD conditioning, ridge/LASSO paths
   backends/       Correctness-oracle adapters: scipy (core dep) and cvxpy (needs the
                   `backends` extra) for LP, least squares, and QP
   problems/       Cross-domain problems (physics, economics, ML, ...) — not yet populated

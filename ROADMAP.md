@@ -147,16 +147,57 @@ half-finished chapters.
       figure to the gradient-norm metric, which stays positive and is the natural
       residual metric for `Ax=b` regardless.
 
-## Phase 3 — Nonsmooth, gradient-free, and global optimization — **next up**
+## Phase 3 — Nonsmooth, gradient-free, and global optimization — **done**
 
-- Proximal gradient, Nelder–Mead, simulated annealing, a from-scratch genetic algorithm,
-  particle swarm.
-- This is the natural home for objectives that are black-box, noisy, or nonsmooth —
-  which includes most real personal-decision objectives, so the first pass at the
-  **life-as-optimization** case study (see Phase 8) lands here as a running example rather
-  than waiting for the full roadmap.
+- [x] `optimlab.optimizers.proximal_gradient`: minimize `g(x)+h(x)` for smooth `g` and
+      possibly-nonsmooth `h` via alternating gradient/proximal steps, with
+      `soft_threshold` as `h`'s proximal operator for LASSO. Direct continuation of
+      Phase 2's ridge regression: same data, `optimlab.viz.lasso_path_figure` next to
+      `ridge_path_figure` makes the qualitative difference (LASSO hits exact zero at a
+      finite `alpha`; ridge only approaches it) visible, not just asserted.
+      `optimlab.optimizers.projected_gradient` (Phase 2) turned out to already be a
+      proximal method in disguise — box constraints are the special case where the
+      proximal operator is exactly clipping. Verified: exact match with cvxpy's LASSO
+      solution, exact recovery of a sparse ground truth's support, reduces to plain
+      gradient descent when the nonsmooth term is zero.
+- [x] `optimlab.optimizers.nelder_mead`: reflect/expand/contract/shrink simplex search,
+      never touches `problem.grad` (checked directly in a test). Verified against
+      `scipy.optimize.minimize(method="Nelder-Mead")`.
+- [x] `optimlab.optimizers.simulated_annealing`: temperature-scaled random walk with
+      Metropolis acceptance of worse moves, tracking best-found (not current) point.
+      Verified: escapes a Rastrigin local minimum that traps gradient descent from the
+      identical start.
+- [x] `optimlab.optimizers.genetic_algorithm` / `optimlab.optimizers.particle_swarm`:
+      population-based search (blend crossover + tournament selection; velocity toward
+      personal/global best). Both default their search region to `problem.domain`, so
+      they're callable the same uniform way as every gradient-based solver. Verified:
+      both reliably reach the global optimum on Rastrigin/Ackley/Himmelblau — problems a
+      purely local method can't solve from an arbitrary start.
+- [x] All four `Problem`-based methods above added to `ALL_SOLVERS` — the first
+      gradient-free entries there, so `race_figure`/`convergence_figure`/
+      `surface_race_figure` immediately support mixed gradient-based vs. gradient-free
+      comparisons (gradient descent visibly stuck vs. simulated annealing/particle swarm
+      escaping, on the identical landscape) with no new visualization code, the direct
+      payoff of Phase 1's `Problem`/`OptimizeResult` interface. Verified by rendering
+      that exact comparison and reviewing it, the same way as every other figure in this
+      repo — which surfaced and led to fixing a real, pre-existing bug:
+      `BenchmarkFunction.problem()` passed an any-dimension benchmark's minimum (e.g.
+      Rastrigin's) straight through as a length-1 placeholder instead of broadcasting it
+      to the problem's actual dimension, silently breaking any 2D viz code indexing
+      `minimum[0]`/`minimum[1]`.
+- [x] Docs chapter (`04-nonsmooth-and-global-optimization.qmd`) covering all five
+      methods, plus the first pass at the **life-as-optimization** case study this phase
+      promised: a small, explicitly-labeled *toy* example (allocating a week's
+      discretionary hours across sleep/work/exercise/social to maximize an invented,
+      deliberately nonsmooth "wellbeing" utility). Genetic algorithm and simulated
+      annealing were run on the identical problem and *disagree* on the answer — kept in
+      the chapter and explained (population blending biases toward compromise points;
+      a single random walker can commit to a narrow region) rather than cherry-picking a
+      seed where they'd agree, in keeping with this phase's stated goal of making
+      optimization's modeling assumptions and limits legible rather than presenting a
+      falsely clean success story.
 
-## Phase 4 — Constraints and duality
+## Phase 4 — Constraints and duality — **next up**
 
 - Lagrange multipliers, KKT conditions, duality and duality gaps, interior point methods,
   ADMM, a short calculus-of-variations / Euler–Lagrange excursion.
@@ -237,13 +278,16 @@ can be pitted against each other.
   equilibrium), sociology/networks (opinion dynamics equilibrium, fair resource
   allocation), machine learning (hyperparameter search via the Optuna backend vs.
   from-scratch Bayesian optimization).
-- **Life as optimization** (flagship case study, first pass lands once Phase 3's
-  gradient-free tooling exists — real personal objectives are noisy, nonsmooth, and
-  multi-objective by nature): a worked example of taking a personal planning problem,
-  making the parameterization and independence/stationarity assumptions explicit, framing
-  it as multi-objective optimization, and being honest about where the model breaks down.
-  The point isn't a "solved" life — it's making the modeling assumptions of applying
-  optimization outside of textbook settings legible.
+- **Life as optimization** (flagship case study — expand the first pass already in
+  `docs/chapters/04-nonsmooth-and-global-optimization.qmd`, a small weekly-hours
+  allocation toy problem solved with `genetic_algorithm`/`simulated_annealing`, into
+  something closer to a real worked example): make the parameterization and
+  independence/stationarity assumptions explicit, frame it as genuinely multi-objective
+  (the Phase 3 version collapses "wellbeing" into one scalar utility — an assumption
+  worth relaxing here), and stay honest about where the model breaks down. The point
+  isn't a "solved" life — it's making the modeling assumptions of applying optimization
+  outside of textbook settings legible, which the Phase 3 pass already showed concretely
+  (two solvers disagreeing on the same toy problem, not papered over).
 
 ## Non-goals
 

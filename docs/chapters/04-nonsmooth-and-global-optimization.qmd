@@ -1,0 +1,245 @@
+---
+title: "Nonsmooth and Global Optimization: When There's No Slope to Follow"
+---
+
+Chapters 1–3 all lean on the same assumption, even where they don't say it out loud:
+`f` has a gradient, and following it (or a curvature-aware version of it) eventually
+gets you somewhere good. This chapter is about what to do when that assumption breaks —
+when `f` has a kink nothing is differentiable at, or when `f` is a black box you can only
+call, or when `f` is so riddled with local minima that "follow the local slope" is
+actively the wrong strategy. None of the methods here need a gradient; two of them
+(simulated annealing, the genetic algorithm) don't even guarantee they'll find the true
+optimum, and that trade-off — give up a guarantee, gain the ability to solve a problem
+gradient-based methods simply can't touch — is the theme of the whole chapter.
+
+## Proximal gradient: smooth plus nonsmooth, handled separately
+
+::: {.callout-note title="Definition — Composite optimization"}
+$$
+\min_x \; g(x) + h(x), \qquad g \text{ smooth}, \quad h \text{ possibly nonsmooth}
+$$
+:::
+
+The kink in $h(x) = \alpha|x|$ at $x=0$ has no derivative — but it has a **proximal
+operator**, $\operatorname{prox}_{th}(v) = \arg\min_x h(x) + \frac{1}{2t}\|x-v\|^2$, and
+that turns out to be enough. Proximal gradient alternates an ordinary gradient step on
+$g$ with a proximal step that handles $h$ exactly:
+$$
+x_{k+1} = \operatorname{prox}_{t h}\big(x_k - t \nabla g(x_k)\big).
+$$
+For LASSO ($h(x) = \alpha\|x\|_1$), the proximal operator is **soft-thresholding** —
+shrink every coordinate toward zero by $\alpha t$, clamping anything that would cross
+zero to exactly zero:
+
+```{python}
+#| label: fig-lasso-vs-ridge
+#| fig-cap: "Ridge (left story, Chapter 3) shrinks every coefficient smoothly and asymptotically; LASSO (via proximal gradient's soft-thresholding) drives irrelevant coefficients to exactly zero at a finite alpha, and keeps them there."
+import numpy as np
+from optimlab.viz import lasso_path_figure, ridge_path_figure
+
+rng = np.random.default_rng(0)
+A = rng.standard_normal((30, 4))
+x_true = np.array([2.0, 0.0, -1.5, 0.0])  # only features 0 and 2 actually matter
+b = A @ x_true + 0.05 * rng.standard_normal(30)
+alphas = np.logspace(-2, 2.5, 25)
+
+lasso_path_figure(A, b, alphas).show()
+```
+
+```{python}
+#| label: fig-ridge-recap
+#| fig-cap: "The same data, same alphas, ridge instead of LASSO -- every coefficient still shrinks, but only LASSO's irrelevant features (x1, x3) actually reach zero."
+ridge_path_figure(A, b, alphas).show()
+```
+
+`optimlab.optimizers.projected_gradient` (Chapter 3) turns out to already have been a
+proximal method in disguise: box constraints are the special case
+$h(x) = 0$ inside the box and $\infty$ outside, whose proximal operator is exactly
+clipping. Nothing about that solver was ad hoc — it's proximal gradient with the one
+proximal operator that happens to look like clipping.
+
+## Nelder-Mead: descending without a gradient at all
+
+Nelder-Mead never evaluates a derivative. It maintains $n+1$ points (a simplex — a
+triangle in 2D) and reshapes it every step: reflect the worst point through the
+centroid of the rest, and depending on how much that helps, expand further, settle for
+the reflection, contract back, or shrink the whole simplex toward the best point.
+
+```{python}
+#| label: fig-nelder-mead
+#| fig-cap: "Nelder-Mead on Rosenbrock's curved valley -- no gradient anywhere in this computation, just repeated reflect/expand/contract/shrink steps on the simplex's worst vertex."
+from optimlab.landscapes import get
+from optimlab.optimizers import nelder_mead
+from optimlab.viz import race_figure
+
+bf = get("rosenbrock")
+problem = bf.problem(x0=np.array([-1.2, 1.0]))
+result = nelder_mead(problem, max_iter=200)
+print(f"{result.solver_name}: x={result.x}, f={result.f:.3g}, {result.n_iter} iterations")
+race_figure(problem, {"nelder_mead": result}).show()
+```
+
+This is a genuinely useful method whenever a gradient isn't just inconvenient but
+unavailable — an objective that calls out to an external simulation, a black-box API,
+or literally is nonsmooth. It has no global guarantee either, though: like every method
+in this chapter past proximal gradient, it can converge to a local rather than global
+optimum on a genuinely multimodal landscape.
+
+## Simulated annealing: sometimes taking a worse step, on purpose
+
+Every method so far in this repo — gradient-based or not — only ever moves to a point
+at least as good as where it started. Simulated annealing breaks that rule on purpose: it
+proposes a random jump and accepts it outright if it's better, but *also* accepts it
+with probability $\exp(-\Delta f / T)$ if it's worse, where $T$ ("temperature") starts
+high and cools every step. Early on, bad moves are accepted often — the walk can climb
+out of whatever local minimum it started in. Late, with $T$ near zero, it's accepted
+only if it's better: pure descent, same as gradient descent, but from wherever the
+random walk happened to end up.
+
+```{python}
+#| label: fig-sa-escapes
+#| fig-cap: "Same start, same landscape: gradient descent (orange) is trapped near a local minimum within a handful of steps; simulated annealing's willingness to accept worse moves lets it wander into the global minimum's basin instead."
+from optimlab.optimizers import gradient_descent, simulated_annealing
+
+bf = get("rastrigin")
+x0 = np.array([4.3, -3.7])  # near a local minimum, far from the global one at the origin
+
+gd_result = gradient_descent(bf.problem(x0=x0.copy()), lr=0.01, max_iter=120)
+sa_result = simulated_annealing(
+    bf.problem(x0=x0.copy()), max_iter=3000, initial_temp=5.0, cooling_rate=0.998, seed=0
+)
+print(f"gradient_descent: f={gd_result.f:.3g} (stuck)")
+print(f"simulated_annealing: f={sa_result.f:.3g}")
+race_figure(bf.problem(x0=x0), {"gradient_descent": gd_result, "simulated_annealing": sa_result}).show()
+```
+
+`simulated_annealing` tracks the *best point found so far*, not the current (possibly
+worse, deliberately accepted) point — genuinely different quantities for this algorithm,
+the same way "current position" and "best answer" differ for a human trying random
+things and remembering what worked.
+
+## Population methods: search with many points at once
+
+`optimlab.optimizers.genetic_algorithm` and `optimlab.optimizers.particle_swarm` both
+replace "one point wandering" with an entire population evolving together, but via
+different mechanisms — a genetic algorithm through selection and crossover, particle
+swarm through velocity nudged toward personal- and swarm-best. Both need a search region
+(`bounds`, defaulting to `problem.domain`) to spread an initial population over, not
+just a single starting point.
+
+```{python}
+#| label: fig-population-methods
+#| fig-cap: "Genetic algorithm and particle swarm, same Rastrigin landscape as above -- both explore with many simultaneous candidates rather than one, and both reliably reach the global optimum's basin regardless of starting point."
+from optimlab.optimizers import genetic_algorithm, particle_swarm
+
+ga_result = genetic_algorithm(bf.problem(x0=x0.copy()), seed=0)
+pso_result = particle_swarm(bf.problem(x0=x0.copy()), seed=0)
+print(f"genetic_algorithm: f={ga_result.f:.3g}")
+print(f"particle_swarm: f={pso_result.f:.3g}")
+race_figure(
+    bf.problem(x0=x0), {"genetic_algorithm": ga_result, "particle_swarm": pso_result}
+).show()
+```
+
+The whole non-convex landscape, seen in 3D — every solver from this chapter descending
+the same "egg carton" surface at once:
+
+```{python}
+#| label: fig-all-solvers-3d
+#| fig-cap: "Every gradient-free solver in this chapter on Rastrigin's landscape, in 3D. Gradient descent (not pictured passing this view) would be a near-vertical drop into the single nearest ripple; these searches instead range across the whole surface before committing."
+from optimlab.viz import surface_race_figure
+
+surface_race_figure(
+    bf.problem(x0=x0),
+    {"simulated_annealing": sa_result, "genetic_algorithm": ga_result, "particle_swarm": pso_result},
+).show()
+```
+
+## A worked (and deliberately toy) example: allocating a week
+
+The chapters so far have all optimized mathematical test functions. Here's the same
+machinery pointed at something more personal: given a fixed number of discretionary
+hours per week, how should they be split across sleep, work, exercise, and social time
+to maximize a "wellbeing" score?
+
+::: {.callout-important title="What this is, and isn't"}
+This is a **modeling exercise**, not a life recommendation. Every number below is
+invented for illustration. The point is to make the assumptions optimization requires
+you to state explicitly — visible and debatable — not to claim any of them are true.
+:::
+
+```{python}
+#| label: life-optimization-setup
+categories = ["sleep", "work", "exercise", "social"]
+weights = np.array([1.4, 1.2, 1.0, 0.8])           # made-up "how much this matters to me"
+thresholds = np.array([49.0, 20.0, 3.0, 2.0])       # weekly hours below which a penalty applies
+penalty = 5.0
+budget = 80.0                                        # total discretionary hours to allocate
+
+def utility(hours):
+    """Diminishing returns per category (sqrt, a standard economics convention for
+    'more is better, but with less and less benefit each additional hour') minus a flat
+    penalty if a category falls below its threshold -- the discontinuity that actually
+    justifies a gradient-free search here: this function isn't even continuous.
+    """
+    hours = np.maximum(hours, 1e-6)
+    diminishing_returns = weights * np.sqrt(hours)
+    shortfall_penalty = penalty * np.sum(np.maximum(thresholds - hours, 0.0) > 0)
+    return np.sum(diminishing_returns) - shortfall_penalty
+```
+
+The budget constraint (`sum(hours) == budget`) isn't handled exactly here — it's folded
+into the objective as a penalty (`+ 50 * |sum(hours) - budget|`), a common, simple way to
+point a gradient-free search at a constrained problem without needing a dedicated
+constrained solver. `optimlab.core.Problem` still only wants a plain function, so this
+penalty lives entirely in the objective the solvers below actually see:
+
+```{python}
+#| label: life-optimization-solve
+from optimlab.core import Problem
+
+def objective(hours):
+    return -utility(hours) + 50.0 * abs(np.sum(hours) - budget)
+
+x0 = np.full(4, budget / len(categories))
+ga_alloc = genetic_algorithm(
+    Problem(f=objective, x0=x0.copy(), domain=(0.0, budget)),
+    population_size=200, max_generations=500, seed=1,
+)
+sa_alloc = simulated_annealing(
+    Problem(f=objective, x0=x0.copy()),
+    max_iter=20000, initial_temp=10.0, cooling_rate=0.999, seed=0,
+)
+
+for name, result in [("genetic_algorithm", ga_alloc), ("simulated_annealing", sa_alloc)]:
+    hours = dict(zip(categories, np.round(result.x, 1)))
+    print(f"{name}: {hours}, utility={utility(result.x):.2f}")
+```
+
+They don't agree — and that disagreement is the actual lesson, not a bug to paper over.
+`simulated_annealing`'s single point can commit to a narrow, easy-to-miss region (here,
+"meet the sleep threshold exactly, split the rest") once its random walk happens to find
+it; `genetic_algorithm`'s population, built by *blending* pairs of candidates, is biased
+toward compromise points partway between good solutions — which, on a landscape with a
+narrow high-value corner right at the threshold boundary, tends to average right past it.
+Rerunning `genetic_algorithm` with more generations, a larger population, or different
+mutation settings reliably lands in the same "compromise" region rather than the corner
+— this isn't one unlucky seed, it's a real bias built into how that particular method
+explores.
+
+Neither answer is certified globally optimal. That's the honest state of affairs for
+every method in this chapter: none of them carry the guarantee Chapters 1–3's convex
+problems came with. What optimization *did* provide here isn't a verified right answer —
+it's forcing every assumption (what "wellbeing" means, that it's additive across
+categories with no interaction effects, that a threshold captures "too little sleep,"
+how hard to penalize breaking the budget) into the open as a line of code, where it can
+be looked at, argued with, and changed. That's arguably the more honest use of
+optimization for a question this soft anyway.
+
+## What's next
+
+This chapter dropped smoothness and convexity, but everything so far has still been
+*unconstrained*, or constrained only informally (a penalty term, a box). The next phase
+puts constraints back on a rigorous footing — Lagrange multipliers, the KKT conditions,
+duality, interior-point methods — the machinery that makes "this constraint holds
+exactly, not just approximately" possible again (ROADMAP Phase 4).
