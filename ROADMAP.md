@@ -160,16 +160,14 @@ can be pitted against each other.
   The point isn't a "solved" life — it's making the modeling assumptions of applying
   optimization outside of textbook settings legible.
 
-## Explicit non-goals / differentiation
+## Non-goals
 
-A `WebSearch`-based scan turned up several existing single-purpose optimizer-visualization
-repos (`lilipads/gradient_descent_viz`, `Gautam-J/optimizers-visualized`, etc.), the
-`tomgoldstein/loss-landscape` companion code for Li et al. 2018, and Brunton's own
-[dynamicslab/optimizationbook](https://github.com/dynamicslab/optimizationbook). None
-combine: algorithms built from scratch, a common cross-domain `Problem` interface, *and*
-an explicit low-dimension → high-dimension intuition bridge. That combination — plus the
-domain reach in Phases 7–8 (physics, econ, sociology, personal decision-making) that no
-optimization textbook attempts — is this repo's reason to exist rather than duplicate or
-transcribe what's already out there. Before writing Phase 2/7 content that overlaps any
-one of these closely, skim the relevant existing project so this repo stays
-complementary rather than a re-transcription of someone else's code or curriculum.
+This repo isn't trying to be a single-purpose optimizer-visualization demo, a
+loss-landscape-plotting script, or a transcription of any one book's code or chapter
+structure — those already exist in various forms elsewhere. The combination this repo
+aims for instead: algorithms built from scratch, a common cross-domain `Problem`
+interface, an explicit low-dimension → high-dimension intuition bridge (Phase 6), and
+domain reach (Phases 7–8: physics, econ, sociology, personal decision-making) that a
+typical optimization text doesn't attempt. Before writing content that closely overlaps
+an existing project or text, skim it first so this repo stays complementary rather than
+a re-transcription.
