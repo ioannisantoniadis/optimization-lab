@@ -39,9 +39,13 @@ src/optimlab/
                   metadata (known minima, convexity, domain)
   inference/      MLE/MAP fitting, Laplace approximation, Metropolis-Hastings MCMC,
                   EM for Gaussian mixture models
+  highdim/        A minimal MLP wrapped as a Problem, random-matrix saddle-point
+                  statistics, Lanczos Hessian eigenspectrum, filter-normalized loss
+                  landscapes, mode connectivity, neural tangent kernel concentration
   viz/            Plotly figure helpers: landscapes, solver-comparison plots, LP feasible
                   regions, regression fit/residuals, SVD conditioning, ridge/LASSO paths,
-                  central path / KKT geometry / duality gap, posterior/MCMC/GMM figures
+                  central path / KKT geometry / duality gap, posterior/MCMC/GMM figures,
+                  saddle-point / Hessian-spectrum / loss-landscape / NTK figures
   backends/       Correctness-oracle adapters: scipy (core dep), cvxpy and optuna (need
                   the `backends` extra) for LP, least squares, QP, and black-box search
   problems/       Cross-domain problems (physics, economics, ML, ...) — not yet populated

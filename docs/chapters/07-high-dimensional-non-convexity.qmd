@@ -1,0 +1,275 @@
+---
+title: "High-Dimensional Non-Convexity: Why Gradient Descent Works Anyway"
+---
+
+Every chapter so far has stayed in a handful of dimensions — few enough to draw a
+contour, watch a path cross it, point at a vector by hand. Real machine learning
+happens in hundreds to billions of dimensions, and low-dimensional intuition about
+"non-convex" actively misleads there: a 2D non-convex surface conjures bumpy egg-carton
+pictures full of bad local minima to get trapped in (Chapter 4's Rastrigin). That
+picture turns out to be close to *backwards* at scale. This is the flagship module the
+whole repo has been building toward — `optimlab.highdim.nets` wraps a small neural
+network's weights into an ordinary `optimlab.core.Problem`, so every solver from
+Chapters 1–4 (no new optimizer, unmodified) can train a real model with hundreds of
+parameters, and everything below runs on it directly.
+
+## Saddle points dominate, not bad local minima
+
+A critical point's local shape — minimum, maximum, or saddle — is set by its Hessian's
+eigenvalue signs: all positive is a minimum, all negative a maximum, mixed is a saddle.
+Model "a random critical point's Hessian" the simplest possible way, a random symmetric
+(GOE) matrix with no special structure assumed, and ask how likely an all-one-sign
+spectrum is as dimension grows [@dauphin2014identifying; @choromanska2015loss]:
+
+```{python}
+#| label: fig-saddle-collapse
+#| fig-cap: "P(local minimum) collapses from a coin flip at dimension 1 to indistinguishable from zero by dimension 6 (0 out of 20,000 samples). P(saddle) does the opposite. Eigenvalues of a random symmetric matrix repel each other -- pinning all of them to the same sign gets exponentially unlikely as there are more of them to pin."
+import numpy as np
+from optimlab.highdim import critical_point_index_stats
+from optimlab.viz import saddle_point_figure
+
+stats = critical_point_index_stats(dims=[1, 2, 3, 4, 5, 6, 8, 10], n_samples=20000, seed=0)
+for d, p_min, p_saddle in zip(stats.dims, stats.p_local_min, stats.p_saddle):
+    print(f"dim={d:3d}  P(local min)={p_min:.5f}  P(saddle)={p_saddle:.5f}")
+
+saddle_point_figure(stats).show()
+```
+
+This is the actual reassurance behind "gradient descent works in high dimensions
+anyway": the failure mode to worry about was never *going to be* a deep local minimum —
+almost every critical point a high-dimensional optimizer could get stuck at is a
+saddle, and a saddle has at least one downhill direction gradient descent (with enough
+noise or enough iterations) eventually finds.
+
+## Why high-dimensional space is geometrically weird
+
+Two direct measurements, no citation needed for either:
+
+```{python}
+#| label: fig-cosine-concentration
+#| fig-cap: "Pairwise cosine similarity of 300 random directions, three dimensions overlaid. Low dimensions spread widely toward -1/+1; by dimension 200 nearly every pair of random directions is close to exactly orthogonal -- not a special construction, just that there are vastly more ways to be roughly perpendicular than roughly parallel once there are many axes to spread across."
+from optimlab.highdim import pairwise_cosine_similarities
+from optimlab.viz import cosine_similarity_figure
+
+similarities = {d: pairwise_cosine_similarities(d, n_vectors=300, seed=0) for d in [3, 20, 200]}
+cosine_similarity_figure(similarities).show()
+```
+
+```{python}
+#| label: ball-shell-volume
+from optimlab.highdim import ball_shell_volume_fraction
+
+for dim in [2, 3, 10, 100, 1000]:
+    frac = ball_shell_volume_fraction(dim, shell_thickness=0.1)
+    print(f"dim={dim:5d}  fraction of a unit ball's volume in the outer 10% shell = {frac:.4f}")
+```
+
+By dimension 100, essentially the *entire* volume of a ball lives within 10% of its
+surface — a high-dimensional ball is nothing like the solid disk low-dimensional
+intuition pictures; it's almost entirely a thin shell. Both facts are the same
+underlying phenomenon (a `dim`-ball's volume scales as `r^dim`, so it concentrates
+wherever `r` is largest) and both matter for the same reason: random initializations,
+random projections, and random perturbations in high dimensions don't behave the way
+two or three dimensions trained your intuition to expect.
+
+## A trainable network, wrapped as an ordinary `Problem`
+
+```{python}
+#| label: train-hero-network
+from optimlab.highdim import MLPShape, mlp_training_problem
+from optimlab.optimizers import adam
+
+rng = np.random.default_rng(0)
+X = rng.uniform(-3, 3, size=(150, 1))
+y = (np.sin(X) + 0.05 * rng.standard_normal(X.shape)).reshape(-1, 1)
+
+shape = MLPShape(layer_sizes=[1, 24, 24, 1])
+print(f"n_params = {shape.n_params}")
+
+problem = mlp_training_problem(shape, X, y, seed=0)
+print(f"initial loss: {problem.f(problem.x0):.4f}")
+
+result = adam(problem, lr=0.01, max_iter=3000)
+print(f"trained loss:  {result.f:.4f}  (injected noise variance: {0.05**2:.4f})")
+```
+
+`optimlab.highdim.nets.MLPShape` packs every layer's weights and biases into one flat
+`673`-entry vector; `mlp_training_problem` wraps the mean-squared error on that flat
+vector as an ordinary `Problem`. Chapter 1's `adam` — unmodified, no special-casing for
+"this happens to be a neural network" anywhere — drives the loss down to essentially
+the noise floor. Every solver in this repo already handles hundreds of dimensions;
+nothing about them was secretly limited to two.
+
+## The Hessian's eigenspectrum: a few outliers, a large bulk
+
+Forming this network's full `673 x 673` Hessian is still just barely feasible — useful
+for a ground-truth check, not the point. The actual technique
+[@sagun2016eigenvalues; @ghorbani2019investigation] never forms it: a Hessian-vector
+product (`jax.jvp` of `jax.grad`, "forward-over-reverse" autodiff) costs about one
+extra gradient evaluation and needs no `n x n` matrix at all, feeding a from-scratch
+Lanczos algorithm that recovers the *extreme* eigenvalues from a `Krylov` subspace far
+smaller than the full parameter count.
+
+```{python}
+#| label: fig-hessian-spectrum
+#| fig-cap: "A scree plot -- eigenvalues sorted descending against rank -- of the trained network's loss Hessian at its minimum. Two eigenvalues stand well clear of the rest; by rank 10 the spectrum has already fallen to a long near-zero bulk. Exactly the shape Sagun et al. and Ghorbani et al. report for real trained networks, recovered here from only 80 Hessian-vector products on a 673-parameter Hessian never explicitly formed."
+from optimlab.highdim import lanczos_eigenvalues
+from optimlab.viz import hessian_spectrum_figure
+
+lanczos_result = lanczos_eigenvalues(problem.f, result.x, n_iter=80, seed=0)
+print(f"top 5 Ritz eigenvalues:    {np.sort(lanczos_result.ritz_values)[-5:]}")
+print(f"bottom 5 Ritz eigenvalues: {np.sort(lanczos_result.ritz_values)[:5]}")
+
+hessian_spectrum_figure(lanczos_result.ritz_values).show()
+```
+
+`tests/test_hessian_spectrum.py` cross-checks this Lanczos implementation against a
+dense `jax.hessian` eigendecomposition directly (Ritz values matching the true extremes
+to `1e-6`, and never exceeding the true spectrum's range — the Rayleigh-quotient
+guarantee) before trusting it on cases where forming the dense Hessian wouldn't be an
+option at all.
+
+### Sharp vs. flat minima
+
+Keskar et al.'s "large-batch training finds sharp minima that generalize worse"
+finding is contested [@keskar2016large] — a minimum's *sharpness* isn't even
+reparametrization-invariant, so "sharp" alone doesn't cleanly predict generalization
+the way the original story suggested. What the top Hessian eigenvalue *does* reliably
+track is a training choice's own bias toward sharper or flatter solutions — visible
+directly by comparing plain training against L2-regularized training on the identical
+problem:
+
+```{python}
+#| label: sharp-vs-flat
+import jax.numpy as jnp
+from optimlab.core import Problem
+from optimlab.highdim import forward, init_params
+
+X_j, y_j = jnp.asarray(X), jnp.asarray(y)
+
+def mse(params):
+    return jnp.mean((forward(params, shape, X_j) - y_j) ** 2)
+
+def mse_with_l2(params, l2=0.01):
+    return mse(params) + l2 * jnp.sum(params**2)
+
+x0 = init_params(shape, seed=0)
+plain_result = adam(Problem(f=mse, x0=x0), lr=0.01, max_iter=3000)
+reg_result = adam(Problem(f=lambda p: mse_with_l2(p), x0=x0), lr=0.01, max_iter=3000)
+
+# sharpness compared on the *same* (unregularized) loss for both, an apples-to-apples surface
+top_eig_plain = lanczos_eigenvalues(mse, plain_result.x, n_iter=60, seed=0).ritz_values.max()
+top_eig_reg = lanczos_eigenvalues(mse, reg_result.x, n_iter=60, seed=0).ritz_values.max()
+
+print(f"plain:        mse={float(mse(plain_result.x)):.4f}  ||params||={np.linalg.norm(plain_result.x):.2f}  top eigenvalue={top_eig_plain:.2f}")
+print(f"L2-regularized: mse={float(mse(reg_result.x)):.4f}  ||params||={np.linalg.norm(reg_result.x):.2f}  top eigenvalue={top_eig_reg:.2f}")
+```
+
+The regularized minimum lands flatter (a smaller top eigenvalue) at a real cost in fit
+quality (a several-times-larger MSE here) — the honest shape of the tradeoff, not a
+claim that flatter always means better, and not always as dramatic a sharpness gap as
+this specific `l2` happens to produce.
+
+## Loss-landscape visualization at scale
+
+The network's weight space has 673 dimensions — nothing to contour-plot directly. Slice
+it: pick two random directions, and look at the loss on the 2D plane they span through
+the trained minimum [@li2018visualizing]. The one subtlety is *which* random
+directions — a naive one puts most of its "step size" wherever one layer's weights
+happen to be largest, making the same numeric step look sharp in one network and flat
+in another for reasons that have nothing to do with the loss surface. **Filter
+normalization** fixes this by rescaling each layer's slice of the direction to match
+that layer's own weight norm:
+
+```{python}
+#| label: fig-loss-landscape
+#| fig-cap: "Loss on a filter-normalized 2D slice through the trained minimum (star, at the origin by construction). A clean, roughly convex-looking bowl around this particular minimum -- log-scaled color since the loss climbs several orders of magnitude away from the minimum, the same compression fig-contour uses back in Chapter 1."
+from optimlab.highdim import loss_landscape_slice
+from optimlab.viz import loss_landscape_figure
+
+loss_slice = loss_landscape_slice(problem.f, result.x, shape, span=1.0, resolution=40, seed=0)
+loss_landscape_figure(loss_slice).show()
+```
+
+A cheaper diagnostic than a full 2D slice — just the loss along the straight line
+between two points [@goodfellow2015qualitatively] — is often enough on its own to see
+whether two points share a basin or are separated by a real barrier, and is exactly
+what the next section needs.
+
+## Mode connectivity: minima joined by a path, not isolated
+
+Train the identical architecture on the identical data from a second, independent random
+initialization. Two different runs, two different final parameter vectors — but do
+they land in the same basin, or genuinely different ones?
+
+```{python}
+#| label: fig-mode-connectivity
+#| fig-cap: "Straight-line interpolation between two independently trained minima crosses a real loss barrier -- about 50x either endpoint's own loss at its peak. A curve chosen to minimize the average loss along it (its one free control point found by the exact same bfgs used everywhere else in this repo) instead stays close to both endpoints' loss the entire way: no real barrier, once curves are allowed to bend around it (Garipov et al. 2018)."
+from optimlab.highdim import bezier_curve_problem, evaluate_curve_loss, linear_interpolation_loss
+from optimlab.optimizers import bfgs
+from optimlab.viz import curve_comparison_figure
+
+problem_b = mlp_training_problem(shape, X, y, seed=1)
+result_b = adam(problem_b, lr=0.01, max_iter=3000)
+print(f"theta_a loss: {result.f:.4f}   theta_b loss: {result_b.f:.4f}")
+
+alphas, straight_losses = linear_interpolation_loss(problem.f, result.x, result_b.x, n_points=21)
+print(f"straight-line max loss: {straight_losses.max():.4f}")
+
+curve_problem = bezier_curve_problem(problem.f, result.x, result_b.x, n_samples=8)
+curve_result = bfgs(curve_problem, max_iter=300)
+ts, curve_losses = evaluate_curve_loss(problem.f, result.x, curve_result.x, result_b.x, n_points=21)
+print(f"optimized-curve max loss: {curve_losses.max():.4f}")
+
+curve_comparison_figure(
+    {"straight line": (alphas, straight_losses), "optimized curve": (ts, curve_losses)},
+    title="Mode connectivity: straight line vs. optimized curve",
+).show()
+```
+
+Both endpoints are genuine minima of the identical loss surface, found completely
+independently — and yet a path between them exists with almost no loss increase
+anywhere along it. "Two different local minima" turns out to be a much weaker
+separation than it sounds: they can sit on the same, gently connected low-loss manifold
+rather than being isolated pockets an optimizer had to get lucky to find.
+
+## Overparameterization makes training easier, not harder
+
+A network's **neural tangent kernel** — how much its own output would change in
+response to an infinitesimal parameter step, `K = J @ J^T` for the Jacobian `J` of
+outputs with respect to parameters — is, in the infinite-width limit, a fixed object
+independent of the random initialization draw [@jacot2018neural]. That's the technical
+ingredient behind "gradient descent provably converges" results for wide networks
+[@du2019gradient]: training becomes equivalent to kernel regression against an
+essentially-fixed kernel ("lazy training"), not the wildly nonlinear optimization the
+raw parameter count might suggest. Measured the direct way — how much do two
+independent random initializations' empirical NTKs actually differ from each other, as
+width grows:
+
+```{python}
+#| label: fig-ntk-concentration
+#| fig-cap: "Mean relative difference between two independent random initializations' empirical NTKs (shaded: +/-1 std across 10 seed pairs per width), log-x. Roughly 34% at the smallest width, falling to about 5% by width 1024 -- concentrating toward the fixed, deterministic kernel the infinite-width theory predicts. The shaded band's own width shrinking alongside the mean is the same concentration effect: not just the average difference falling, but the run-to-run variance in that difference falling too."
+from optimlab.highdim import ntk_concentration_experiment
+from optimlab.viz import ntk_concentration_figure
+
+X_ntk = rng.uniform(-1, 1, size=(20, 2))
+ntk_result = ntk_concentration_experiment(widths=[4, 16, 64, 256, 1024], X=X_ntk, n_in=2, n_seed_pairs=10, seed=0)
+for w, m in zip(ntk_result.widths, ntk_result.mean_relative_diff):
+    print(f"width={w:5d}  mean relative NTK difference={m:.4f}")
+
+ntk_concentration_figure(ntk_result).show()
+```
+
+Wider isn't harder to train because it's less genuinely nonlinear near its own
+initialization, not despite having more parameters to search over — the opposite of
+what "more dimensions, more room to get lost in" would predict, and consistent with
+saddle points (not bad minima) being the actual obstacle this whole chapter has been
+pointing at.
+
+## What's next
+
+Every module in this repo so far has been building and verifying general-purpose
+machinery. Phase 7 turns outward: inverse problems (imaging, PDE-constrained inversion),
+control (LQR, nonlinear optimal control, MPC), and machine learning end to end —
+training a small network or toy transformer with this repo's *own* from-scratch `adam`,
+the same one that trained every network in this chapter.

@@ -300,55 +300,74 @@ half-finished chapters.
       honestly rather than as a "the new backend wins" story). Full site rendered and
       every section/figure reviewed in a real browser tab.
 
-## Phase 6 — High-dimensional non-convexity: the flagship module — **next up**
+## Phase 6 — High-dimensional non-convexity: the flagship module — **done**
 
 The centerpiece motivating this whole repo: building real intuition for what a
 million-to-billion-dimensional non-convex loss surface looks like, and why gradient
-descent works on it anyway. Requires the JAX-based autodiff core from Phase 1 and small
-trainable networks, so it's scheduled once that backbone is solid — but conceptual pieces
-(concentration of measure, random-matrix eigenvalue toys) can start earlier as standalone
-demos.
+descent works on it anyway.
 
-Planned content, with the literature behind each piece:
+- [x] `optimlab.highdim.nets`: a minimal MLP whose entire parameter vector is a single
+      flat array, wrapped as an ordinary `optimlab.core.Problem` — the backbone every
+      other piece below builds on. Chapters 1–4's unmodified solvers already train it
+      (verified: a 673-parameter network fitting noisy sine data down to the injected
+      noise floor with plain `adam`, no special-casing anywhere for "this happens to be
+      a neural network").
+- [x] **Saddle points dominate, not bad local minima**
+      [@dauphin2014identifying; @choromanska2015loss]: sample random GOE matrix
+      eigenvalues and measure P(local min) vs. dimension directly — collapses from a
+      coin flip at dimension 1 to 0/20,000 samples by dimension 6.
+- [x] **Hessian eigenspectrum of real trained networks**
+      [@sagun2016eigenvalues; @ghorbani2019investigation]: Hessian-vector products via
+      forward-over-reverse autodiff (`jax.jvp` of `jax.grad`, verified against a dense
+      Hessian to `1e-8`) feeding a from-scratch Lanczos algorithm with full
+      reorthogonalization (Ritz values verified against a dense eigendecomposition's
+      extremes to `1e-6`, and checked to never exceed the true spectrum's range). Plain
+      Lanczos rather than the originally-scoped stochastic Hutchinson trace estimation
+      — Lanczos alone was already enough for the "few outliers over a near-zero bulk"
+      shape this phase actually needed to show.
+- [x] **Loss landscape visualization at scale** [@li2018visualizing]: filter-normalized
+      random 2D slices through weight space (verified: each layer's random direction
+      matches that layer's own weight norm exactly), plus the cheaper
+      [@goodfellow2015qualitatively] linear-interpolation diagnostic.
+- [x] **Mode connectivity** [@garipov2018loss]: two independently trained minima joined
+      by a quadratic Bezier curve whose one free control point is found by minimizing
+      the average loss along it — another ordinary `Problem`, solved by the same `bfgs`
+      used everywhere else. Verified: straight-line interpolation between two trained
+      minima crosses a real barrier (~50x either endpoint's own loss at its peak); the
+      optimized curve stays flat near each endpoint's loss the entire way.
+- [x] **Sharp vs. flat minima** [@keskar2016large]: reuses the Lanczos tool above rather
+      than new code — comparing plain vs. L2-regularized training's top Hessian
+      eigenvalue on the identical problem shows regularization biasing toward flatter
+      minima at a real cost in fit quality, reported honestly (a modest gap for this
+      specific setup, not oversold as dramatic).
+- [x] **Why high dimensions are weird, geometrically**: pairwise cosine similarity of
+      random directions (concentrates toward 0 as dimension grows) and the ball-shell
+      volume fraction closed form (a high-dim ball's volume lives almost entirely in a
+      thin shell near its surface) — no citation needed, both original from-scratch
+      demos.
+- [x] **Overparameterization makes training easier, not harder**
+      [@jacot2018neural; @du2019gradient]: the empirical neural tangent kernel and a
+      concentration experiment — independent random initializations' NTKs become more
+      similar to each other as width grows (averaged over seed pairs per width to
+      smooth small-width noise; verified monotonically decreasing across widths
+      4→16→64→256→1024).
+- [x] Six visualizations (`optimlab/viz/highdim.py`): the saddle-point collapse,
+      cosine-similarity concentration, a Hessian eigenspectrum scree plot (chosen over
+      a histogram, which blurs the "few outliers" shape), a filter-normalized loss
+      slice, a shared curve-comparison plot (linear interpolation and mode connectivity
+      are both just "loss along a 1D path"), and NTK concentration with a shaded std
+      band. Rendering and reviewing them surfaced a real bug: the shaded-band trace
+      didn't set `mode="lines"`, so Plotly's default drew stray markers at the band's
+      own concatenated corner points instead of a clean fill.
+- [x] Docs chapter (`07-high-dimensional-non-convexity.qmd`) covering all of the above
+      end to end on one trained network, reviewed in a real browser tab. Caught and
+      corrected two numbers before committing that a first draft's prose overclaimed
+      relative to what actually rendered: the sharp-vs-flat gap ("measurably flatter...
+      slightly worse fit" corrected to state the real, several-times-larger MSE cost),
+      and the NTK trend's small-width noise (rather than asserting clean monotonicity
+      the first draft's number happened not to have).
 
-- **Saddle points dominate, not bad local minima.** Dauphin et al. 2014 (*Identifying and
-  Attacking the Saddle Point Problem*, [arXiv:1406.2572](https://arxiv.org/abs/1406.2572))
-  and the spin-glass argument in Choromanska et al. 2015 (*The Loss Surfaces of Multilayer
-  Networks*, [PMLR v38](https://proceedings.mlr.press/v38/choromanska15.pdf)): as dimension
-  grows, a random critical point is exponentially unlikely to have an all-positive-eigenvalue
-  Hessian. From-scratch demo: sample random quadratic forms, plot P(local min) vs.
-  dimension, next to the empirical eigenvalue-sign histogram.
-- **Hessian eigenspectrum of real trained networks.** Sagun et al. 2016
-  ([arXiv:1611.07476](https://arxiv.org/abs/1611.07476)) and Ghorbani et al. 2019
-  ([PMLR v97](https://proceedings.mlr.press/v97/ghorbani19b/ghorbani19b.pdf)): a small
-  number of large outlier eigenvalues sitting on a large near-zero bulk. Implement Lanczos
-  / stochastic Hutchinson trace estimation so this is computable without forming the full
-  Hessian.
-- **Loss landscape visualization at scale.** Li et al. 2018 (*Visualizing the Loss
-  Landscape of Neural Nets*, [arXiv:1712.09913](https://arxiv.org/abs/1712.09913)):
-  filter-normalized random 2D slices through weight space — reimplemented from scratch
-  (~100 lines), not vendored from `tomgoldstein/loss-landscape`. Pair with the cheaper
-  Goodfellow et al. 2015 linear-interpolation diagnostic
-  ([arXiv:1412.6544](https://arxiv.org/abs/1412.6544)).
-- **Mode connectivity.** Garipov et al. 2018
-  ([arXiv:1802.10026](https://arxiv.org/pdf/1802.10026)) and Draxler et al. 2018: distinct
-  trained minima are joined by simple low-loss paths — "no real barriers" once you stop
-  looking only at straight lines.
-- **Sharp vs. flat minima and generalization.** Keskar et al. 2016
-  ([arXiv:1609.04836](https://arxiv.org/abs/1609.04836)), plus the reparametrization-invariance
-  critique (Dinh et al. 2017) and a 2025 revisit
-  ([arXiv:2511.03548](https://arxiv.org/pdf/2511.03548)) — present both the appealing
-  story and why it's not the whole story.
-- **Why high dimensions are weird, geometrically.** Concentration of measure (random
-  points concentrate in a thin shell), near-orthogonality of random Gaussian directions.
-  No single citation needed — original interactive builds: histogram of pairwise cosine
-  similarities vs. dimension, sphere-volume-vs-ball-volume plots.
-- **Overparameterization makes things easier, not harder.** Neural Tangent Kernel (Jacot
-  et al. 2018) and Du et al. 2019 (*Gradient Descent Provably Optimizes Over-parameterized
-  Neural Networks*) — the "lazy training" story for why wide nets behave locally like a
-  convex quadratic. Secondary source: Lilian Weng's NTK derivation write-up.
-
-## Phase 7 — Domain applications: inverse problems, control, machine learning
+## Phase 7 — Domain applications: inverse problems, control, machine learning — **next up**
 
 - Inverse problems: medical/computational imaging, PDE-constrained inversion, system ID.
 - Control: LQR, nonlinear optimal control, dynamic programming, MPC, a light RL bridge.
