@@ -46,12 +46,36 @@ half-finished chapters.
       the Phase 1 visualization slice. One real constraint surfaced and resolved this
       way: `optimlab` depends on JAX for autodiff, and JAX has no WebAssembly build, so
       the marimo app can't run live inside a browser-only (Pyodide) export — the docs
-      page embeds a static snapshot instead and tells readers to run the app locally for
-      genuine interactivity, rather than silently shipping something broken.
+      page shows a screenshot of it instead (`docs/images/`) and tells readers to run
+      the app locally for genuine interactivity, rather than silently shipping something
+      broken (an earlier version embedded a *static HTML export* of the notebook, which
+      was itself confusing — visible, unlabeled sliders that silently did nothing — so
+      that was dropped in favor of an honestly-non-interactive screenshot).
       A GitHub Actions workflow (`.github/workflows/docs.yml`) builds and deploys to
       GitHub Pages on push to `main` — live at
       [ioannisantoniadis.github.io/optimization-lab](https://ioannisantoniadis.github.io/optimization-lab/),
       confirmed by an actual successful run, not just a written-and-hoped-for workflow.
+- [x] Visualization quality pass, prompted by direct feedback that the landscape plots
+      read as "flat" and the convergence curves looked like they cut off before reaching
+      the optimum. Both were real, not just perceptual: `contour_figure` had contour
+      lines disabled (`showlines=False`), so most of a domain far from any minimum
+      rendered as a near-uniform dark fill; and the ill-conditioned-quadratic demo's
+      `gradient_descent` call genuinely hadn't converged within its `max_iter` budget
+      (verified by checking `.converged` directly, not by eyeballing the plot). Fixed:
+      contour lines back on with labeled levels; `surface_figure`'s `log_z` now defaults
+      to `True` (it defaulted `False`, which flattens a steep function to a spike) with
+      a three-quarter camera angle instead of Plotly's near-top-down default; new
+      `surface_race_figure`/`add_trajectory_3d` overlay a solver's actual path onto the
+      3D surface (`z` from `OptimizeResult.f_trajectory`, run through the same transform
+      as the surface it sits on); `convergence_figure` gained `pad_converged=True`
+      (default), which extends a solver that converged early with a dotted line at its
+      final value out to the longest-running solver in the group, so "converged, holding
+      at the optimum" is visually distinguishable from "ran out of budget mid-descent" —
+      the latter is deliberately *not* padded, so an unfinished run still looks unfinished.
+      Re-verified the same way as everything else in this phase: rendered to PNG and
+      looked at it (twice — the first pass had the same colorbar/legend collision as
+      before, just in the 3D scene this time), then re-rendered the live docs site and
+      reviewed it in a browser.
 
 ## Phase 2 — Convex workhorses: linear programming & least squares — **next up**
 

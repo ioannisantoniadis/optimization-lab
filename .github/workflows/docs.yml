@@ -6,7 +6,6 @@ on:
     paths:
       - "docs/**"
       - "src/optimlab/**"
-      - "notebooks/marimo/gradient_descent_explorer.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/docs.yml"
@@ -42,12 +41,6 @@ jobs:
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
-
-      - name: Regenerate the marimo static embed
-        run: >
-          uv run marimo export html
-          notebooks/marimo/gradient_descent_explorer.py
-          -o docs/embeds/gradient_descent_explorer.html -f
 
       - name: Render site
         run: quarto render docs

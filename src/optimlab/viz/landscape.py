@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import plotly.graph_objects as go
 
-from optimlab.core import Objective, Problem
+from optimlab.core import ArrayLike, Objective, Problem
 from optimlab.viz.theme import layout_template, sequential_blue
 
 
@@ -46,12 +46,32 @@ def _resolve_domain(problem: Problem, domain: tuple[float, float] | None) -> tup
     return (-5.0, 5.0)
 
 
-def _display_z(Z: np.ndarray, log_z: bool) -> tuple[np.ndarray, str]:
+def _display_z(Z: np.ndarray, log_z: bool) -> tuple[np.ndarray, str, float]:
     # Short colorbar titles on purpose: the colorbar shares the right margin with the
     # legend in race_figure, and a long title collides with legend entries there.
+    # Also returns `z_min`, the offset used by the log transform, so a trajectory's
+    # f-values can be mapped through the identical transform (see `transform_values`)
+    # and land in the same display coordinates as the grid they're overlaid on.
     if not log_z:
-        return Z, "f(x)"
-    return np.log10(Z - Z.min() + 1e-6), "log10 f(x)"
+        return Z, "f(x)", 0.0
+    z_min = float(Z.min())
+    return np.log10(Z - z_min + 1e-6), "log10 f(x)", z_min
+
+
+def transform_values(values: ArrayLike, log_z: bool, z_min: float) -> np.ndarray:
+    """Apply the exact transform `_display_z` used on the grid to a 1D array of raw
+    f-values (typically an `OptimizeResult.f_trajectory`), so a trajectory overlaid on a
+    `contour_figure`/`surface_figure` lines up with that figure's display coordinates.
+
+    `z_min` comes from a *coarse, sampled* grid, so a converging trajectory routinely
+    lands below it (the true continuum minimum a solver reaches is rarely exactly one of
+    the grid's sample points) — clip at 0 before the log so that doesn't produce a
+    `log10` of a negative number (NaN) at the very point we most want to plot.
+    """
+    values = np.asarray(values, dtype=float)
+    if not log_z:
+        return values
+    return np.log10(np.maximum(values - z_min, 0.0) + 1e-6)
 
 
 def contour_figure(
@@ -72,13 +92,24 @@ def contour_figure(
 
     low, high = _resolve_domain(problem, domain)
     X, Y, Z = _evaluate_grid(problem.f, (low, high), (low, high), resolution)
-    Z_display, colorbar_title = _display_z(Z, log_z)
+    Z_display, colorbar_title, _z_min = _display_z(Z, log_z)
 
     fig = go.Figure(
         go.Contour(
             x=X[0], y=Y[:, 0], z=Z_display,
             colorscale=sequential_blue(),
-            contours={"showlines": False},
+            # Visible iso-lines, not just filled color: a wash of one flat-looking hue
+            # over most of a steep-then-flat function (Rosenbrock, Himmelblau, ...) reads
+            # as texture-less even after the log transform below — the lines are what
+            # actually show the local slope (tightly packed = steep, sparse = flat).
+            ncontours=22,
+            contours={
+                "showlines": True,
+                "coloring": "fill",
+                "showlabels": True,
+                "labelfont": {"size": 9, "color": "#52514e"},
+            },
+            line={"width": 0.6, "color": "rgba(11,11,11,0.35)"},
             # Pinned low/short so it never collides with the legend, which sits
             # top-right in the same right-hand margin (see race_figure).
             colorbar={"title": colorbar_title, "len": 0.55, "y": 0.26, "x": 1.02},
@@ -108,30 +139,44 @@ def contour_figure(
     return fig
 
 
+#: A three-quarter, slightly-above-the-horizon view. Plotly's own default camera looks
+#: nearly straight down, which makes a 3D surface read exactly like the 2D contour it's
+#: supposed to be more intuitive than — this is what actually makes "descending a bowl"
+#: visible instead of just "colored regions from above" a second time.
+DEFAULT_SURFACE_CAMERA = {"eye": {"x": 1.5, "y": -1.6, "z": 0.9}}
+
+
 def surface_figure(
     problem: Problem,
     *,
     resolution: int = 100,
     domain: tuple[float, float] | None = None,
-    log_z: bool = False,
+    log_z: bool = True,
     dark: bool = False,
 ) -> go.Figure:
-    """A 3D surface of `problem.f` — the "textbook picture" of a landscape. Genuinely
-    only tells you something for 2 parameters; see `optimlab.landscapes` (ROADMAP Phase 6)
-    for how we look at a million-parameter version of this same question.
+    """A 3D surface of `problem.f` — the "textbook picture" of a landscape, and genuinely
+    more legible than the 2D contour for "how does a solver actually descend to the
+    minimum," which a top-down view only partially conveys. Only tells you something for
+    2 parameters, though; see `optimlab.landscapes` (ROADMAP Phase 6) for how we look at
+    a million-parameter version of this same question. `log_z=True` (default, matching
+    `contour_figure`) keeps a steep-then-flat function like Rosenbrock from rendering as
+    a razor-thin spike on an otherwise flat plate.
     """
     if problem.n_dim != 2:
         raise ValueError(f"surface_figure needs a 2D problem, got n_dim={problem.n_dim}")
 
     low, high = _resolve_domain(problem, domain)
     X, Y, Z = _evaluate_grid(problem.f, (low, high), (low, high), resolution)
-    Z_display, colorbar_title = _display_z(Z, log_z)
+    Z_display, colorbar_title, _z_min = _display_z(Z, log_z)
 
     fig = go.Figure(
         go.Surface(
             x=X, y=Y, z=Z_display,
             colorscale=sequential_blue(),
-            colorbar={"title": colorbar_title},
+            # Same fix as contour_figure: pinned low/short so a legend added later (by
+            # surface_race_figure, one entry per solver) never collides with it — 3D
+            # scenes don't inherit that fix automatically, they need their own.
+            colorbar={"title": colorbar_title, "len": 0.55, "y": 0.26, "x": 1.02},
             hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>%{z:.3f}<extra></extra>",
         )
     )
@@ -143,7 +188,10 @@ def surface_figure(
             scene={
                 "xaxis_title": "x0", "yaxis_title": "x1", "zaxis_title": colorbar_title,
                 "bgcolor": chrome_bg,
+                "camera": DEFAULT_SURFACE_CAMERA,
             },
+            legend={"y": 1, "yanchor": "top", "x": 1.02, "xanchor": "left"},
+            margin={"l": 20, "r": 140, "t": 50, "b": 20},
         ),
     )
     return fig

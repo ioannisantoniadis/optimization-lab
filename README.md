@@ -64,14 +64,15 @@ installed separately (it isn't a Python package):
 # code cells against it (with optimlab, jax, plotly available):
 uv run python -m ipykernel install --user --name optimlab --display-name "optimlab (uv)"
 
-# Regenerate the embedded marimo snapshot (a static export, not a live app — optimlab
-# depends on JAX, which has no WebAssembly build, so it can't run client-side):
-uv run marimo export html notebooks/marimo/gradient_descent_explorer.py \
-    -o docs/embeds/gradient_descent_explorer.html -f
-
 quarto preview docs   # live-reloading local preview
 quarto render docs    # one-shot build to docs/_site/
 ```
+
+The docs page for the marimo app is a screenshot (`docs/images/`), not a live embed —
+`optimlab` depends on JAX, which has no WebAssembly build, so the app can't run
+client-side in a browser-only export. Regenerate the screenshot after changing that
+notebook's UI: `uv run marimo edit notebooks/marimo/gradient_descent_explorer.py`,
+screenshot it, save over `docs/images/gradient-descent-explorer-screenshot.jpg`.
 
 ## Sources
 

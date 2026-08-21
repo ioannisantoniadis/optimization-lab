@@ -95,7 +95,7 @@ condition number 100:
 
 ```{python}
 #| label: fig-ill-conditioned
-#| fig-cap: "Gradient descent zig-zags across a narrow valley; Newton solves the quadratic model exactly and needs a single step."
+#| fig-cap: "Gradient descent zig-zags across a narrow valley; Newton solves the quadratic model exactly and needs a single step. Contour lines (not just fill color) are what make the zig-zag legible — each line is a level set of equal loss, so tightly packed lines mean the surface is steep there."
 import numpy as np
 
 from optimlab.core import Problem
@@ -120,7 +120,7 @@ results = {
     "gradient_descent": gradient_descent(
         Problem(f=f, x0=x0.copy(), grad=grad, hess=hess, name="anisotropic_quadratic",
                 minimum=np.zeros(2), f_min=0.0, domain=(-11, 11)),
-        lr=0.0099, max_iter=400,
+        lr=0.0198, max_iter=1500,  # ~2/(L+mu) for this quadratic — converges in ~900 steps
     ),
     "newton": newton_method(
         Problem(f=f, x0=x0.copy(), grad=grad, hess=hess, name="anisotropic_quadratic",
@@ -140,6 +140,21 @@ that same small step size crawls painfully slowly along the wide (low-curvature)
 direction. Newton's method uses the Hessian to rescale each direction by its own
 curvature and gets there in essentially one step. This is `tests/test_optimizers.py
 ::test_ill_conditioning_orders_solver_iteration_counts`, made visible.
+
+A top-down contour is a projection — it shows *where* each solver went, not what it
+actually descended. The same run, seen as a literal descent down the surface, in 3D:
+
+```{python}
+#| label: fig-ill-conditioned-3d
+#| fig-cap: "The same race, viewed as an actual descent: gradient descent's zig-zag traces a jagged path down the trough wall; Newton drops almost straight down."
+from optimlab.viz import surface_race_figure
+
+surface_race_figure(problem, results).show()
+```
+
+Drag to rotate — from directly above this is the same picture as the contour plot;
+tilted, gradient descent's path visibly saws back and forth *while* it descends, rather
+than looking like a clean diagonal line.
 
 ## Watching it happen: four solvers on a genuinely non-convex landscape
 
@@ -164,12 +179,25 @@ race_results = {
 race_figure(benchmark.problem(x0=start), race_results).show()
 ```
 
-And the same run, as a convergence curve — note the log-scaled $y$-axis, without which
-Newton's and BFGS's curves would be indistinguishable from "instant":
+Himmelblau's landscape is four narrow wells sitting in a much shallower plain — hard to
+read off the contour lines alone. In 3D, it's unmistakable:
+
+```{python}
+#| label: fig-himmelblau-race-3d
+#| fig-cap: "The same four solvers, descending Himmelblau's function in 3D — four sharp wells, one solver in each."
+from optimlab.viz import surface_race_figure
+
+surface_race_figure(benchmark.problem(x0=start), race_results).show()
+```
+
+And the 2D race, as a convergence curve — note the log-scaled $y$-axis, without which
+Newton's and BFGS's curves would be indistinguishable from "instant," and the dotted
+extensions: Newton, BFGS, and gradient descent all converge well before Nesterov does,
+and stay flat at the optimum rather than the line simply stopping:
 
 ```{python}
 #| label: fig-himmelblau-convergence
-#| fig-cap: "Convergence curves for the same four solvers on Himmelblau's function."
+#| fig-cap: "Convergence curves for the same four solvers on Himmelblau's function. Dotted segments mark a solver that already converged, holding its final value out to the longest-running solver in the group."
 from optimlab.viz import convergence_figure
 
 convergence_figure(race_results).show()
@@ -177,26 +205,27 @@ convergence_figure(race_results).show()
 
 ## Try it yourself
 
-The embed below is a **static snapshot** of the `gradient_descent_explorer` marimo app
-— its Plotly figures are fully interactive (zoom, pan, hover), but the sliders are
-frozen: `optimlab` depends on JAX for autodiff, and JAX has no WebAssembly build, so it
-can't run inside a browser-only (Pyodide) marimo export the way a pure-numpy notebook
-could. Genuine live reactivity — dragging a learning-rate slider and watching every
-solver re-run — needs a real Python process:
+Every figure on this page is frozen at whatever code produced it. For a version you can
+actually drive — pick a different landscape, drag a learning-rate slider, add or remove
+solvers, and watch the plots above re-run live — run the companion
+[marimo](https://marimo.io) app locally:
 
 ```bash
 uv run marimo edit notebooks/marimo/gradient_descent_explorer.py
 ```
 
-```{=html}
-<iframe class="marimo-embed" src="../embeds/gradient_descent_explorer.html" title="Gradient Descent Explorer (static snapshot)"></iframe>
-```
+This isn't embeddable on this page: `optimlab` depends on JAX for autodiff, and JAX has
+no WebAssembly build, so it can't run inside a browser-only (Pyodide) marimo export the
+way a pure-numpy notebook could. What it looks like, running the same Himmelblau race as
+above:
 
-A few things worth trying once it's running live: push `gradient_descent`'s learning
-rate up on `sphere` until it stops converging (the threshold is exactly $2/L$, where
-$L$ is `sphere`'s curvature — its Hessian is $2I$, so $L = 2$); or start from a corner
-of `rosenbrock` and compare `gradient_descent` crawling the valley floor against
-`newton` or `bfgs` from the same point.
+![The `gradient_descent_explorer` app running locally — landscape/solver/hyperparameter controls at the top, the same race and convergence plots redrawing live below.](../images/gradient-descent-explorer-screenshot.jpg)
+
+A few things worth trying once it's running: push `gradient_descent`'s learning rate up
+on `sphere` until it stops converging (the threshold is exactly $2/L$, where $L$ is
+`sphere`'s curvature — its Hessian is $2I$, so $L = 2$); or start from a corner of
+`rosenbrock` and compare `gradient_descent` crawling the valley floor against `newton`
+or `bfgs` from the same point.
 
 ## What's next
 
