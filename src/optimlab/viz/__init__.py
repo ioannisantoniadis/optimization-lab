@@ -8,6 +8,12 @@ from optimlab.viz.compare import (
 )
 from optimlab.viz.landscape import contour_figure, surface_figure, transform_values
 from optimlab.viz.polytope import polytope_figure
+from optimlab.viz.regression import (
+    regression_fit_figure,
+    residuals_figure,
+    ridge_path_figure,
+    svd_conditioning_figure,
+)
 
 __all__ = [
     "add_trajectory",
@@ -16,8 +22,12 @@ __all__ = [
     "convergence_figure",
     "polytope_figure",
     "race_figure",
+    "regression_fit_figure",
+    "residuals_figure",
+    "ridge_path_figure",
     "solver_color_map",
     "surface_figure",
     "surface_race_figure",
+    "svd_conditioning_figure",
     "transform_values",
 ]
