@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from optimlab.inference.mle import map_fit, mle_fit
+from optimlab.linalg import least_squares, ridge_regression
 from optimlab.optimizers.projected_gradient import projected_gradient
 
 
@@ -75,3 +76,52 @@ def test_map_matches_closed_form_beta_binomial_mode_with_a_bounded_solver():
     )
     assert result.converged
     assert result.x[0] == pytest.approx(true_mode, abs=1e-3)
+
+
+def test_ordinary_least_squares_is_exactly_gaussian_mle():
+    """optimlab.linalg.least_squares (Chapter 3) minimizes ||Ax-b||^2 via the SVD --
+    a purely geometric derivation with no mention of probability anywhere. Framed as
+    MLE instead (data ~ N(Ax, sigma^2 I)), the log-likelihood is -0.5/sigma^2 times
+    that exact same sum of squared residuals, so the two derivations' optima must
+    coincide -- checked here by fitting the identical data both ways.
+    """
+    rng = np.random.default_rng(4)
+    m, n = 60, 3
+    A = rng.standard_normal((m, n))
+    x_true = np.array([2.0, -1.5, 0.5])
+    b = A @ x_true + rng.standard_normal(m)
+
+    ols_result = least_squares(A, b)
+
+    def log_likelihood(params):
+        residual = jnp.asarray(A) @ params - jnp.asarray(b)
+        return -0.5 * jnp.sum(residual**2)
+
+    mle_result = mle_fit(log_likelihood, x0=np.zeros(n))
+    np.testing.assert_allclose(ols_result.x, mle_result.x, atol=1e-6)
+
+
+def test_ridge_regression_is_exactly_gaussian_map():
+    """Ridge's penalty alpha*||x||^2 (Chapter 3) is, up to an additive constant, the
+    negative log of a Gaussian prior x ~ N(0, I/alpha) -- so ridge_regression's
+    closed-form SVD solution and map_fit's iterative optimum should coincide exactly
+    for matching alpha, the same cross-check as ordinary least squares vs. MLE above.
+    """
+    rng = np.random.default_rng(5)
+    m, n = 60, 3
+    A = rng.standard_normal((m, n))
+    x_true = np.array([2.0, -1.5, 0.5])
+    b = A @ x_true + rng.standard_normal(m)
+    alpha = 5.0
+
+    ridge_result = ridge_regression(A, b, alpha)
+
+    def log_likelihood(params):
+        residual = jnp.asarray(A) @ params - jnp.asarray(b)
+        return -0.5 * jnp.sum(residual**2)
+
+    def log_prior(params):
+        return -0.5 * alpha * jnp.sum(params**2)
+
+    map_result = map_fit(log_likelihood, log_prior, x0=np.zeros(n))
+    np.testing.assert_allclose(ridge_result.x, map_result.x, atol=1e-6)
