@@ -1,10 +1,11 @@
 from optimlab.optimizers.adaptive import adagrad, adam, rmsprop
+from optimlab.optimizers.barrier_method import ConstrainedProblem, barrier_method
 from optimlab.optimizers.conjugate_gradient import conjugate_gradient
 from optimlab.optimizers.gauss_newton import NonlinearLeastSquaresProblem, gauss_newton
 from optimlab.optimizers.genetic_algorithm import genetic_algorithm
 from optimlab.optimizers.gradient_descent import gradient_descent
 from optimlab.optimizers.line_search import backtracking_armijo, strong_wolfe_line_search
-from optimlab.optimizers.linear_programming import LinearProgram, LPResult, simplex
+from optimlab.optimizers.linear_programming import LinearProgram, LPResult, dual, simplex
 from optimlab.optimizers.momentum import heavy_ball, nesterov
 from optimlab.optimizers.nelder_mead import nelder_mead
 from optimlab.optimizers.newton import newton_method
@@ -52,14 +53,17 @@ ALL_SOLVERS = {
 __all__ = [
     "ALL_SOLVERS",
     "CompositeProblem",
+    "ConstrainedProblem",
     "LPResult",
     "LinearProgram",
     "NonlinearLeastSquaresProblem",
     "adagrad",
     "adam",
     "backtracking_armijo",
+    "barrier_method",
     "bfgs",
     "conjugate_gradient",
+    "dual",
     "gauss_newton",
     "genetic_algorithm",
     "gradient_descent",

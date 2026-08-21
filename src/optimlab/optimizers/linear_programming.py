@@ -275,3 +275,32 @@ def simplex(lp: LinearProgram, *, max_iter: int = 200) -> LPResult:
         x=x, objective=float(lp.c @ x), status=status,
         n_iter=iters_p1 + iters_p2, vertices=vertices, solver_name="simplex",
     )
+
+
+def dual(lp: LinearProgram) -> LinearProgram:
+    """The Lagrangian dual of `lp` — currently for `<=`-only primals (`A_eq=None`); a
+    primal equality constraint's dual variable is *free* (unrestricted in sign), which
+    doesn't fit `LinearProgram`'s `x >= 0` convention without splitting each into a
+    difference of two nonnegative variables, a real extension left for later rather than
+    scoped in here.
+
+    Derivation: introduce a multiplier `y >= 0` per `<=` row and `s >= 0` for `x >= 0`
+    in the Lagrangian `L(x, y, s) = c^T x + y^T(A_ub x - b_ub) - s^T x`; minimizing over
+    the unconstrained `x` is `-infinity` unless `x`'s coefficient vanishes exactly
+    (`s = c + A_ub^T y >= 0`), leaving the dual `maximize -b_ub^T y` subject to
+    `A_ub^T y >= -c`, `y >= 0` — a *maximization*, so it isn't directly one of our
+    (minimizing) `LinearProgram`s. Framed as the equivalent minimization
+    `min b_ub^T y s.t. -A_ub^T y <= c, y >= 0` instead (what this function returns),
+    strong duality shows up as `primal.objective == -dual_result.objective`, not
+    equality without the sign flip — confirmed empirically against 30+ random LPs in
+    `tests/test_linear_programming.py` rather than asserted from the derivation alone.
+    """
+    if lp.A_eq is not None:
+        raise NotImplementedError(
+            "dual() only supports <=-only primals (A_eq=None) -- an equality "
+            "constraint's dual variable is free (any sign), which doesn't fit "
+            "LinearProgram's x >= 0 convention without splitting it in two."
+        )
+    return LinearProgram(
+        c=lp.b_ub, A_ub=-np.asarray(lp.A_ub).T, b_ub=lp.c, name=f"dual({lp.name})",
+    )

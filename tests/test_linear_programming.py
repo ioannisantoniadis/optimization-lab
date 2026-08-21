@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.optimize import linprog
 
-from optimlab.optimizers.linear_programming import LinearProgram, simplex
+from optimlab.optimizers.linear_programming import LinearProgram, dual, simplex
 
 
 def test_classic_ub_only_problem():
@@ -104,3 +104,38 @@ def test_matches_scipy_on_random_bounded_feasible_lps(seed):
     assert ref.status == 0
     assert result.status == "optimal"
     assert result.objective == pytest.approx(ref.fun, abs=1e-5, rel=1e-5)
+
+
+def test_dual_of_classic_problem_achieves_strong_duality():
+    lp = LinearProgram(c=[-3.0, -5.0], A_ub=[[1, 0], [0, 2], [3, 2]], b_ub=[4, 12, 18])
+    primal = simplex(lp)
+    dual_result = simplex(dual(lp))
+    assert primal.status == dual_result.status == "optimal"
+    assert primal.objective == pytest.approx(-dual_result.objective, abs=1e-6)
+
+
+def test_dual_rejects_equality_constrained_primals():
+    lp = LinearProgram(c=[1.0, 1.0], A_eq=[[1, 2]], b_eq=[4])
+    with pytest.raises(NotImplementedError, match="A_eq=None"):
+        dual(lp)
+
+
+@pytest.mark.parametrize("seed", range(15))
+def test_strong_duality_holds_on_random_bounded_feasible_lps(seed):
+    rng = np.random.default_rng(seed + 1000)  # offset from the simplex-only stress test's seeds
+    n = rng.integers(2, 6)
+    m = rng.integers(1, 6)
+    c = rng.uniform(-5, 5, size=n)
+    A_ub = rng.uniform(-5, 5, size=(m, n))
+    x_feas = rng.uniform(0, 5, size=n)
+    b_ub = A_ub @ x_feas + rng.uniform(0, 5, size=m)
+    A_ub = np.vstack([A_ub, np.eye(n)])
+    b_ub = np.concatenate([b_ub, np.full(n, 100.0)])
+
+    lp = LinearProgram(c=c, A_ub=A_ub, b_ub=b_ub)
+    primal = simplex(lp)
+    dual_result = simplex(dual(lp))
+
+    assert primal.status == "optimal"
+    assert dual_result.status == "optimal"
+    assert primal.objective == pytest.approx(-dual_result.objective, abs=1e-4, rel=1e-4)
