@@ -1,0 +1,304 @@
+---
+title: "Constraints and Duality: Where the Boundary Does the Work"
+---
+
+Chapter 4 dropped smoothness and convexity but stayed unconstrained, or constrained only
+informally — a penalty term folded into the objective, a box clipped after each step.
+This chapter puts constraints back on rigorous footing: the Lagrangian, the KKT
+conditions that characterize a constrained optimum exactly, two structurally different
+ways to actually *solve* a constrained problem (an interior point method that turns
+constraints into a smooth penalty, and ADMM which never forms a penalty at all), and a
+short detour into calculus of variations — where the "variable" being optimized is an
+entire function, not a finite vector, and the necessary condition for optimality
+(Euler-Lagrange) plays the same role the gradient does everywhere else in this book.
+
+## The Lagrangian and the KKT conditions
+
+::: {.callout-note title="Definition — KKT conditions"}
+For $\min_x f(x)$ subject to $g_i(x) \le 0$, the Lagrangian is
+$\mathcal{L}(x, \lambda) = f(x) + \sum_i \lambda_i g_i(x)$. A point $x^\star$ is optimal
+(under standard constraint qualifications) exactly when some $\lambda^\star \ge 0$
+satisfies all four:
+
+1. **Stationarity** — $\nabla f(x^\star) + \sum_i \lambda_i^\star \nabla g_i(x^\star) = 0$
+2. **Primal feasibility** — $g_i(x^\star) \le 0$ for every $i$
+3. **Dual feasibility** — $\lambda_i^\star \ge 0$ for every $i$
+4. **Complementary slackness** — $\lambda_i^\star g_i(x^\star) = 0$ for every $i$
+:::
+
+Complementary slackness is the condition doing the most conceptual work: it says every
+multiplier is zero *unless* its constraint is exactly active (tight) at the optimum — an
+inactive constraint contributes nothing to stationarity, as if it weren't there at all.
+Stationarity alone is the geometric heart of the picture: $-\nabla f(x^\star)$, the
+direction that would most improve the objective, has to be exactly cancelled by some
+nonnegative combination of the active constraints' outward normals — otherwise there'd
+be a feasible direction that still improves $f$, and $x^\star$ wouldn't be optimal. The
+figures below draw exactly this cancellation.
+
+## The barrier method: constraints as a smooth penalty
+
+::: {.callout-note title="Idea — Log-barrier reformulation"}
+$$
+\min_x\; t\,f(x) - \sum_i \log(-g_i(x)), \qquad t \to \infty
+$$
+:::
+
+Replace every inequality constraint with a logarithmic penalty that blows up as $x$
+approaches the boundary from inside, then solve a *sequence* of these unconstrained
+problems with the penalty's relative weight $t$ driven up geometrically. Each fixed-$t$
+problem is smooth and unconstrained — solvable with the exact Newton machinery from
+Chapter 1 — and as $t \to \infty$ the log term's influence vanishes, so the sequence of
+minimizers converges to the true constrained optimum. That sequence is the **central
+path** [@boyd2004convex, Algorithm 11.1]:
+
+```{python}
+#| label: fig-central-path
+#| fig-cap: "minimize (x-3) squared + (y-3) squared s.t. x<=1, y<=1 -- pulled toward an infeasible target, fenced in by two box constraints. The central path curves through the feasible region's interior and only touches the boundary in the limit, at the corner where both constraints are simultaneously active."
+import numpy as np
+from optimlab.optimizers.barrier_method import ConstrainedProblem, barrier_method
+from optimlab.viz import central_path_figure
+
+problem = ConstrainedProblem(
+    f=lambda x: (x[0] - 3.0) ** 2 + (x[1] - 3.0) ** 2,
+    x0=np.array([0.5, 0.5]),
+    inequality_constraints=[lambda x: x[0] - 1.0, lambda x: x[1] - 1.0],
+    name="box_corner_quadratic",
+)
+result = barrier_method(problem)
+print(f"x*={result.x}, f={result.f:.4g}, {result.n_iter} outer iterations, converged={result.converged}")
+central_path_figure(problem, result).show()
+```
+
+`OptimizeResult.grad_norm_trajectory` is repurposed here (same pattern Chapter 4 used
+for simulated annealing's temperature) to hold the **duality gap** estimate
+$m/t$ ($m$ = number of constraints) at each outer step — a standard upper bound on how
+far the current point is from the true optimum:
+
+```{python}
+#| label: fig-duality-gap
+#| fig-cap: "The duality gap on a log axis -- flat while t is still small enough that the very first Newton solve dominates, then a straight line: t *= 10 each outer step makes the gap shrink by the same factor every step, a geometric rate, not just an eventual guarantee."
+from optimlab.viz import duality_gap_figure
+
+duality_gap_figure(result.grad_norm_trajectory, tol=1e-8).show()
+```
+
+### Stationarity, drawn as vectors
+
+At the converged iterate, the barrier method's own KKT multiplier estimate is recoverable
+from the final $t$ and each active constraint's slack $s_i = -g_i(x^\star)$:
+$\lambda_i = 1/(t \cdot s_i)$. Both constraints are active at this problem's corner
+solution, so stationarity says $-\nabla f(x^\star)$ should exactly equal
+$\lambda_0 \nabla g_0(x^\star) + \lambda_1 \nabla g_1(x^\star)$:
+
+```{python}
+#| label: fig-kkt-geometry
+#| fig-cap: "-grad f(x*) (red) and the two active constraints' gradients, each scaled by its multiplier (green, orange) -- their sum (dashed gray) lands exactly on top of the red arrow. All three are drawn with a small perpendicular offset purely so they don't render as one indistinguishable arrow; the underlying vectors really are parallel."
+from optimlab.viz import kkt_geometry_figure
+
+kkt_geometry_figure(problem, result).show()
+```
+
+The multipliers printed in the legend (both $\lambda \approx 4$, by the symmetry of this
+particular problem) are exactly what complementary slackness requires: strictly
+positive, because both constraints are genuinely pinning the optimum in place, not just
+incidentally satisfied.
+
+## Linear programming has its own, exact duality
+
+Chapter 2's simplex solver only ever handles a primal minimization. Every LP restricted
+to `<=` constraints (`A_eq=None`) also has a **dual** — introduce a multiplier
+$y \ge 0$ per row, and the Lagrangian's structure forces a second linear program whose
+optimal value matches the primal's exactly (strong duality), not merely bounds it:
+
+```{python}
+#| label: lp-strong-duality
+from optimlab.optimizers.linear_programming import LinearProgram, simplex, dual
+
+lp = LinearProgram(name="classic_lp", c=[-3.0, -5.0], A_ub=[[1, 0], [0, 2], [3, 2]], b_ub=[4, 12, 18])
+primal_result = simplex(lp)
+dual_result = simplex(dual(lp))
+
+print(f"primal: x={primal_result.x}, objective={primal_result.objective:.6g}")
+print(f"dual:   y={dual_result.x}, objective={dual_result.objective:.6g}")
+print(f"primal.objective = {primal_result.objective:.6g}, -dual.objective = {-dual_result.objective:.6g}")
+```
+
+`optimlab.optimizers.linear_programming.dual`'s docstring works through the sign
+convention by hand (the Lagrangian's own construction), but the relationship it settles
+on — `primal.objective == -dual.objective`, not direct equality — was confirmed
+empirically against 30+ random LPs before being trusted, the same "derive it, then check
+it against enough random instances to actually believe it" discipline every convexity
+claim in this repo goes through. Every dual variable's *value* also has a reading in the
+primal's own terms — $y_i$ is exactly the primal constraint $i$'s **shadow price**, how
+much the optimal objective would improve per unit of slack added to that constraint —
+though this repo doesn't verify that reading numerically here.
+
+## ADMM: splitting the problem instead of penalizing it
+
+The barrier method needs a differentiable objective and constraints (it takes gradients
+and Hessians of both). ADMM sidesteps that requirement entirely for the composite
+problems Chapter 4 introduced ($\min_x f(x) + g(z)$ subject to $x=z$, $f$ smooth, $g$
+possibly not): alternate a proximal step on each piece, with a running dual variable $u$
+nudging the two into agreement —
+
+$$
+x_{k+1} = \operatorname{prox}_{f/\rho}(z_k - u_k), \quad
+z_{k+1} = \operatorname{prox}_{g/\rho}(x_{k+1} + u_k), \quad
+u_{k+1} = u_k + x_{k+1} - z_{k+1}
+$$
+
+— never touching a gradient of either piece [@boyd2011distributed]. On LASSO, the same
+problem Chapter 4 solved with `proximal_gradient`, ADMM should land in the same place by
+an entirely different route:
+
+```{python}
+#| label: admm-vs-proximal-gradient
+from optimlab.optimizers.admm import ADMMProblem, admm
+from optimlab.optimizers.proximal_gradient import CompositeProblem, proximal_gradient, soft_threshold
+
+rng = np.random.default_rng(0)
+m, n = 50, 20
+A = rng.standard_normal((m, n))
+x_true = np.zeros(n)
+x_true[[2, 5, 9]] = [3.0, -2.0, 1.5]
+b = A @ x_true + 0.01 * rng.standard_normal(m)
+alpha = 1.0
+
+AtA, Atb = A.T @ A, A.T @ b
+
+def lasso_admm_problem(rho):
+    return ADMMProblem(
+        prox_f=lambda v, t: np.linalg.solve(AtA + np.eye(n) / t, Atb + v / t),
+        prox_g=lambda v, t: soft_threshold(v, alpha * t),
+        x0=np.zeros(n),
+        f_obj=lambda x: 0.5 * np.sum((A @ x - b) ** 2),
+        g_obj=lambda x: alpha * np.sum(np.abs(x)),
+    )
+
+admm_result = admm(lasso_admm_problem(rho=20.0), rho=20.0, max_iter=2000, tol=1e-8)
+
+L = np.linalg.eigvalsh(AtA).max()
+pg_problem = CompositeProblem(
+    grad_smooth=lambda x: A.T @ (A @ x - b),
+    prox_nonsmooth=lambda v, t: soft_threshold(v, alpha * t),
+    x0=np.zeros(n),
+)
+pg_result = proximal_gradient(pg_problem, lr=1.0 / L, max_iter=5000, tol=1e-10)
+
+print(f"ADMM:              {admm_result.n_iter} iterations, f={admm_result.f:.4f}")
+print(f"proximal_gradient: {pg_result.n_iter} iterations")
+print(f"max |x difference|: {np.max(np.abs(admm_result.x - pg_result.x)):.2e}")
+```
+
+Two algorithms that never touch each other's internals — one alternates proximal steps
+plus a dual variable, the other takes an explicit gradient step then a proximal step —
+land within $10^{-8}$ of each other. That agreement is stronger evidence than either
+result alone.
+
+### `rho` is a speed dial, but the naive stopping check isn't safe
+
+```{python}
+#| label: admm-rho-sensitivity
+for rho in [0.5, 1.0, 5.0, 20.0, 50.0]:
+    r = admm(lasso_admm_problem(rho), rho=rho, max_iter=5000, tol=1e-6)
+    print(f"rho={rho:5.1f}  {r.n_iter:5d} iterations  f={r.f:.4f}  converged={r.converged}")
+```
+
+`rho` trades off how hard each step insists $x$ and $z$ agree against how far either is
+allowed to move — ADMM converges for *any* $\rho > 0$, but larger `rho` here reaches the
+same answer in dramatically fewer iterations. That speed came from fixing a real bug
+this chapter surfaced along the way: with the stopping check `admm` originally shipped
+with — the **primal** residual $\|x-z\|$ alone below `tol` — the `rho=50` run above
+would have declared victory after exactly 5 iterations, at an objective value about 50%
+off the true minimum. The primal residual isn't monotone; at large `rho`, $x$ and $z$
+can agree by pure coincidence for one step, long before either has actually converged,
+then disagree again the next step before properly settling. `admm` now also tracks the
+**dual residual** $\rho\|z_{k+1}-z_k\|$ and requires both below `tol`
+[@boyd2011distributed, §3.3.1] — `tests/test_admm.py
+::test_large_rho_does_not_falsely_converge_on_a_transient_primal_dip` reproduces the
+exact failure this replaced.
+
+## A short excursion: calculus of variations
+
+Every optimization problem so far has searched over a finite-dimensional $x \in
+\mathbb{R}^n$. Calculus of variations asks the same question — minimize *something* —
+but the unknown is an entire function, and the search space is infinite-dimensional.
+
+::: {.callout-note title="Idea — The Euler-Lagrange equation"}
+For a functional $J[y] = \int_a^b L(x, y, y') \, dx$, a minimizing $y$ must satisfy
+$$
+\frac{\partial L}{\partial y} - \frac{d}{dx}\frac{\partial L}{\partial y'} = 0.
+$$
+:::
+
+This plays exactly the role $\nabla f(x^\star) = 0$ plays for a finite-dimensional
+minimum — a necessary first-order condition, derived the same way (perturb the candidate
+solution, require the first-order change to vanish), just with the perturbation now an
+entire function rather than a vector [@gelfand2000calculus]. The classic instance here is
+the soap film spanning two coaxial rings of equal radius $y_0$, distance $L$ apart: the
+film's shape $y(x)$ minimizes its surface area,
+$J[y] = 2\pi \int_0^L y\sqrt{1+y'^2}\,dx$, subject to $y(0)=y(L)=y_0$. Applying
+Euler-Lagrange here gives a **catenary**, $y(x) = C\cosh\!\big((x - L/2)/C\big)$, with
+$C$ fixed by the boundary condition $y_0 = C\cosh(L/2C)$.
+
+That's the calculus-of-variations answer. Nothing about it required `optimlab` — but the
+*same* minimization is also just a finite-dimensional optimization problem in disguise,
+the moment $y$ is discretized onto a grid: replace the function with $N{+}1$ heights
+$y_0, \dots, y_N$ at fixed $x$-positions, replace the integral with a sum, and hand the
+resulting (very ordinary) `Problem` to BFGS:
+
+```{python}
+#| label: fig-catenary
+#| fig-cap: "The straight-line (flat) initial guess bows inward under BFGS until it matches the analytic catenary to 5 decimal places -- direct discretize-then-optimize recovers the same answer as solving the Euler-Lagrange equation by hand."
+import jax.numpy as jnp
+from scipy.optimize import brentq
+from optimlab.core import Problem
+from optimlab.optimizers import bfgs
+from optimlab.viz.theme import layout_template
+import plotly.graph_objects as go
+
+y0, L, N = 1.0, 1.0, 40
+xs = np.linspace(0.0, L, N + 1)
+dx = xs[1] - xs[0]
+
+def surface_area(y_free):
+    y = jnp.concatenate([jnp.array([y0]), y_free, jnp.array([y0])])
+    y_mid = (y[:-1] + y[1:]) / 2.0
+    y_prime = jnp.diff(y) / dx
+    return jnp.sum(y_mid * jnp.sqrt(1.0 + y_prime**2)) * dx
+
+flat_guess = np.full(N - 1, y0)
+problem = Problem(f=surface_area, x0=flat_guess, name="minimal_surface_of_revolution")
+result = bfgs(problem, max_iter=500)
+y_opt = np.concatenate([[y0], result.x, [y0]])
+
+C = brentq(lambda C: C * np.cosh(L / (2 * C)) - y0, 0.5, 3.0)  # the larger (stable) root
+y_catenary = C * np.cosh((xs - L / 2) / C)
+
+print(f"discretized-and-optimized area: {result.f:.6f}")
+print(f"flat (initial guess) area:      {L * y0:.6f}")
+print(f"max |y_opt - y_catenary|:       {np.max(np.abs(y_opt - y_catenary)):.2e}")
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=xs, y=np.full(N + 1, y0), mode="lines", name="flat initial guess",
+                          line={"color": "#898781", "width": 1.5, "dash": "dot"}))
+fig.add_trace(go.Scatter(x=xs, y=y_catenary, mode="lines", name="analytic catenary",
+                          line={"color": "#52514e", "width": 4}))
+fig.add_trace(go.Scatter(x=xs, y=y_opt, mode="markers", name="BFGS-optimized",
+                          marker={"size": 6, "color": "#eb6834"}))
+fig.update_layout(**layout_template(title="Minimal surface of revolution: soap film between two rings",
+                                     xaxis_title="x", yaxis_title="y (ring radius)"))
+fig.show()
+```
+
+The discretized optimum's surface area comes in below the flat guess's, as it must, and
+matches the closed-form catenary to five decimal places — solving an ODE analytically
+and directly optimizing a fine enough discretization of the same functional are, in the
+limit, the same computation.
+
+## What's next
+
+Every method in this chapter assumed the objective and constraints were exactly known.
+Phase 5 turns to the case where the "objective" comes from data instead — maximum
+likelihood and MAP estimation, Bayesian inference, and least squares (Chapter 3)
+reframed as a statistical estimator rather than a purely geometric fit.

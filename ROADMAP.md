@@ -197,14 +197,59 @@ half-finished chapters.
       optimization's modeling assumptions and limits legible rather than presenting a
       falsely clean success story.
 
-## Phase 4 — Constraints and duality — **next up**
+## Phase 4 — Constraints and duality — **done**
 
-- Lagrange multipliers, KKT conditions, duality and duality gaps, interior point methods,
-  ADMM, a short calculus-of-variations / Euler–Lagrange excursion.
-- Visual goal: make a KKT condition and a duality gap *look like something geometrically*,
-  not just algebra.
+- [x] `optimlab.optimizers.barrier_method`: interior point / log-barrier method
+      (Boyd & Vandenberghe, Algorithm 11.1) — a sequence of damped-Newton solves on
+      `t*f(x) - sum log(-g_i(x))` with `t` driven up geometrically, feasibility-aware
+      backtracking (a trial step is rejected outright the moment it leaves the strictly
+      feasible region, before Armijo is even checked). `ConstrainedProblem` autodiff-fills
+      gradients/Hessians for `f` and every constraint, and validates `x0`'s strict
+      feasibility up front, naming which constraints are violated if it isn't. Verified
+      against known symmetric optima, scipy SLSQP, and cvxpy across randomized seeds.
+- [x] `optimlab.optimizers.linear_programming.dual`: the Lagrangian dual of a `<=`-only
+      `LinearProgram`, reusing Phase 2's `simplex` on both sides. The sign relationship
+      it settles on (`primal.objective == -dual.objective`) was derived by hand *and*
+      confirmed empirically against 30+ random LPs before being trusted — an earlier,
+      more "elegant"-looking direct-equality construction was tried first and was simply
+      wrong.
+- [x] `optimlab.optimizers.admm`: Alternating Direction Method of Multipliers — alternate
+      proximal steps on `f`/`g` with a scaled dual variable enforcing `x=z`, never
+      touching a gradient of either piece. Cross-verified against cvxpy and against
+      Phase 3's `proximal_gradient` on an identical LASSO instance (agree to ~1e-8).
+      Verifying this surfaced a real correctness bug, not just a test bug: the shipped
+      primal-residual-only stopping check could declare false convergence — confirmed
+      concretely at `rho=50` on the LASSO test problem, where `||x-z||` transiently hits
+      ~1e-17 at iteration 5 while the objective is still ~50% off the true minimum, then
+      rises again before properly decaying. Fixed with the standard combined
+      primal-and-dual-residual stopping rule (Boyd et al. 2011, §3.3.1); regression test
+      reproduces the exact failure this replaced.
+- [x] Three visualizations making the phase's explicit "look like something
+      geometrically" goal concrete: `central_path_figure` (the feasible region shaded,
+      each constraint's boundary drawn, the barrier method's central path threading
+      through the interior to the optimum), `kkt_geometry_figure` (`-grad f(x*)` and the
+      active constraints' `lambda_i`-scaled gradients drawn as vectors at the optimum —
+      verified to cancel exactly, both for a single active constraint and a
+      two-active-constraint corner case), and `duality_gap_figure` (the gap on a log
+      axis, showing the geometric shrink rate directly, not just the eventual
+      guarantee). All three rendered and visually reviewed before committing.
+- [x] Short calculus-of-variations / Euler-Lagrange excursion, done as a docs-chapter
+      example rather than new library code (`optimlab.problems` stays reserved for
+      Phase 8 per its own docstring): the minimal-surface-of-revolution problem (a soap
+      film between two coaxial rings), whose Euler-Lagrange solution is a closed-form
+      catenary. Discretizing the same surface-area functional onto a grid and handing it
+      to plain BFGS recovers the analytic catenary to 5 decimal places — direct
+      discretize-then-optimize and solving the ODE by hand land on the same answer.
+- [x] Docs chapter (`05-constraints-and-duality.qmd`) covering the KKT conditions, the
+      barrier method with the central-path and KKT-geometry figures, LP strong duality
+      (primal vs. dual solved by the same simplex code), ADMM (including the
+      rho-sensitivity numbers and the false-convergence fix, told honestly rather than
+      smoothed over), and the catenary excursion. Full site rendered and every new
+      section/figure reviewed in a real browser tab; caught and fixed a real Pandoc
+      footgun along the way — a fig-cap containing bare `^2` text (not LaTeX) was
+      silently parsed as superscript markup, mangling the caption.
 
-## Phase 5 — Bayesian modeling and estimation
+## Phase 5 — Bayesian modeling and estimation — **next up**
 
 - MLE/MAP, Bayesian inference, EM/GMMs, least squares as statistical estimation.
 - Backend link: Optuna/Bayesian-optimization adapters for black-box hyperparameter search.

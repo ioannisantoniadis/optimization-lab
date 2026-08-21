@@ -21,6 +21,7 @@ book:
     - chapters/02-linear-programming.qmd
     - chapters/03-least-squares.qmd
     - chapters/04-nonsmooth-and-global-optimization.qmd
+    - chapters/05-constraints-and-duality.qmd
   navbar:
     background: light
 
