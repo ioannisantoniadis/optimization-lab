@@ -1,4 +1,5 @@
 from optimlab.optimizers.adaptive import adagrad, adam, rmsprop
+from optimlab.optimizers.admm import ADMMProblem, admm
 from optimlab.optimizers.barrier_method import ConstrainedProblem, barrier_method
 from optimlab.optimizers.conjugate_gradient import conjugate_gradient
 from optimlab.optimizers.gauss_newton import NonlinearLeastSquaresProblem, gauss_newton
@@ -52,6 +53,7 @@ ALL_SOLVERS = {
 
 __all__ = [
     "ALL_SOLVERS",
+    "ADMMProblem",
     "CompositeProblem",
     "ConstrainedProblem",
     "LPResult",
@@ -59,6 +61,7 @@ __all__ = [
     "NonlinearLeastSquaresProblem",
     "adagrad",
     "adam",
+    "admm",
     "backtracking_armijo",
     "barrier_method",
     "bfgs",
