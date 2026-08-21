@@ -48,3 +48,17 @@ def test_problem_builds_with_random_start_in_domain():
     assert problem.n_dim == 8
     low, high = bf.domain
     assert np.all(problem.x0 >= low) and np.all(problem.x0 <= high)
+
+
+@pytest.mark.parametrize("name,n_dim", [("rastrigin", 2), ("sphere", 4), ("rosenbrock", 3)])
+def test_problem_minimum_is_broadcast_to_the_actual_dimension(name, n_dim):
+    """These benchmarks store their minimum as a length-1 placeholder (any-dimension
+    functions: the optimum is e.g. "every coordinate is 0"), which previously leaked
+    straight into `Problem.minimum` unbroadcast -- fine for evaluating f_min, but a
+    length-1 "point" silently breaks any 2D viz code indexing minimum[0], minimum[1]
+    (caught via optimlab.viz.contour_figure raising IndexError on rastrigin).
+    """
+    bf = get(name)
+    problem = bf.problem(n_dim=n_dim)
+    assert problem.minimum.shape == (n_dim,)
+    assert float(bf.f(problem.minimum)) == pytest.approx(bf.f_min, abs=1e-6)

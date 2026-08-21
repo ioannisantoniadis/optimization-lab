@@ -49,12 +49,23 @@ class BenchmarkFunction:
             rng = np.random.default_rng(seed)
             low, high = self.domain
             x0 = rng.uniform(low, high, size=dim)
+
+        minimum = None
+        if self.minima:
+            minimum = self.minima[0]
+            if self.n_dim is None and minimum.size == 1:
+                # An any-dimension benchmark (sphere, rosenbrock, rastrigin, ackley,
+                # styblinski_tang) stores its minimum as a length-1 placeholder (e.g.
+                # "every coordinate is 0") rather than one array per possible n_dim --
+                # broadcast it out to this problem's actual dimension.
+                minimum = np.resize(minimum, dim)
+
         return Problem(
             f=self.f,
             x0=np.asarray(x0, dtype=float),
             grad=self.grad,
             name=self.name,
-            minimum=self.minima[0] if self.minima else None,
+            minimum=minimum,
             f_min=self.f_min,
             domain=self.domain,
             reference=self.description,
