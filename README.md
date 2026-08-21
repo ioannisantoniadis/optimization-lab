@@ -37,11 +37,13 @@ src/optimlab/
                   ridge regression, equality-constrained least squares / QP
   landscapes/     Benchmark test functions (sphere, Rosenbrock, Rastrigin, ...) with
                   metadata (known minima, convexity, domain)
+  inference/      MLE/MAP fitting, Laplace approximation, Metropolis-Hastings MCMC,
+                  EM for Gaussian mixture models
   viz/            Plotly figure helpers: landscapes, solver-comparison plots, LP feasible
                   regions, regression fit/residuals, SVD conditioning, ridge/LASSO paths,
-                  central path / KKT geometry / duality gap
-  backends/       Correctness-oracle adapters: scipy (core dep) and cvxpy (needs the
-                  `backends` extra) for LP, least squares, and QP
+                  central path / KKT geometry / duality gap, posterior/MCMC/GMM figures
+  backends/       Correctness-oracle adapters: scipy (core dep), cvxpy and optuna (need
+                  the `backends` extra) for LP, least squares, QP, and black-box search
   problems/       Cross-domain problems (physics, economics, ML, ...) — not yet populated
 docs/             Quarto site: theory + write-ups, with figures executed from real code
 notebooks/marimo/ Interactive apps (see below)

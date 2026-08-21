@@ -1,0 +1,279 @@
+---
+title: "Bayesian Modeling and Estimation: The Objective Comes From Data"
+---
+
+Every method so far assumed the objective was handed to you — a known function, exactly
+specified. This chapter turns to the case where the "objective" comes from data instead:
+given some observations and a probability model, what parameters make those observations
+most plausible? That question turns out to still be an ordinary minimization — no new
+solver machinery is needed, just a specific, named choice of objective. What *is* new is
+what "the answer" means once uncertainty about the parameters themselves is part of the
+question, and one genuinely new algorithm (EM) for the case where part of the data is
+unobserved.
+
+## Maximum likelihood: probability's answer to "fit the data"
+
+::: {.callout-note title="Definition — Maximum likelihood estimation"}
+$$
+\hat\theta_{\text{MLE}} = \arg\max_\theta \; p(\text{data} \mid \theta)
+= \arg\min_\theta \; -\log p(\text{data} \mid \theta)
+$$
+:::
+
+Flip the sign and MLE is exactly a `Problem` this repo has solved a hundred times over.
+`optimlab.inference.mle_fit` is barely more than that observation made literal — negate
+a supplied log-likelihood and hand it to BFGS:
+
+```{python}
+#| label: mle-gaussian-mean
+import numpy as np
+import jax.numpy as jnp
+from optimlab.inference import mle_fit
+
+rng = np.random.default_rng(0)
+sigma = 2.0
+data = rng.normal(3.0, sigma, size=200)
+
+def log_likelihood(params):
+    mu = params[0]
+    return jnp.sum(-0.5 * ((data - mu) / sigma) ** 2)
+
+result = mle_fit(log_likelihood, x0=np.array([0.0]))
+print(f"MLE estimate: {result.x[0]:.4f}")
+print(f"sample mean:  {data.mean():.4f}  (the known closed-form answer here)")
+```
+
+## Least squares was already a maximum likelihood estimate
+
+Chapter 3's `least_squares` was derived purely geometrically — minimize `||Ax-b||`,
+solved via the SVD, no mention of probability anywhere. Assume instead that
+`b = Ax + noise`, `noise ~ N(0, sigma^2 I)`: the log-likelihood of the data is, up to an
+additive constant that doesn't depend on `x`, exactly `-0.5/sigma^2 * ||Ax-b||^2` — so
+maximizing it is minimizing the identical sum of squared residuals. Two completely
+different derivations, same optimum:
+
+```{python}
+#| label: ols-is-mle
+from optimlab.linalg import least_squares, ridge_regression
+from optimlab.inference import map_fit
+
+rng = np.random.default_rng(1)
+m, n = 60, 3
+A = rng.standard_normal((m, n))
+x_true = np.array([2.0, -1.5, 0.5])
+b = A @ x_true + rng.standard_normal(m)
+
+ols_result = least_squares(A, b)
+
+def ls_log_likelihood(params):
+    residual = jnp.asarray(A) @ params - jnp.asarray(b)
+    return -0.5 * jnp.sum(residual**2)
+
+mle_result = mle_fit(ls_log_likelihood, x0=np.zeros(n))
+print(f"least_squares (SVD):  {ols_result.x}")
+print(f"mle_fit (BFGS):        {mle_result.x}")
+print(f"max abs difference:    {np.max(np.abs(ols_result.x - mle_result.x)):.2e}")
+```
+
+The same reframing turns ridge regression into a **MAP** estimate — Chapter 3's L2
+penalty `alpha * ||x||^2` is, up to a constant, `-log` of a Gaussian prior
+`x ~ N(0, I/alpha)` on the coefficients themselves:
+
+```{python}
+#| label: ridge-is-map
+alpha = 5.0
+ridge_result = ridge_regression(A, b, alpha)
+
+def ridge_prior(params):
+    return -0.5 * alpha * jnp.sum(params**2)
+
+map_result = map_fit(ls_log_likelihood, ridge_prior, x0=np.zeros(n))
+print(f"ridge_regression (SVD): {ridge_result.x}")
+print(f"map_fit (BFGS):          {map_result.x}")
+print(f"max abs difference:      {np.max(np.abs(ridge_result.x - map_result.x)):.2e}")
+```
+
+Regularization was never a separate idea from "having a prior belief" — it's the exact
+same mathematical object, viewed from Chapter 3's optimization side versus this
+chapter's statistical side.
+
+## The Laplace approximation: a Gaussian guess at the posterior's shape
+
+MAP gives one point — the posterior's *mode* — with nothing about how confident that
+point is. The Laplace approximation adds a curvature-based error bar for free: expand
+the log-posterior to second order around the MAP estimate, which is a Gaussian whose
+covariance is the *inverse Hessian* of the negative log-posterior there (a sharper peak,
+larger Hessian, narrower Gaussian) [@bishop2006pattern, §4.4]. For a Gaussian likelihood
+and a Gaussian prior, the true posterior already *is* Gaussian, so this "approximation"
+is exact:
+
+```{python}
+#| label: laplace-exact-conjugate
+from optimlab.inference import laplace_approximation
+
+n = 30
+data2 = rng.normal(3.0, sigma, size=n)
+mu0, tau0 = 0.0, 5.0
+
+def log_likelihood_mu(params):
+    mu = params[0]
+    return jnp.sum(-0.5 * ((data2 - mu) / sigma) ** 2)
+
+def log_prior_mu(params):
+    mu = params[0]
+    return -0.5 * ((mu - mu0) / tau0) ** 2
+
+post_var = 1.0 / (n / sigma**2 + 1.0 / tau0**2)
+post_mean = post_var * (np.sum(data2) / sigma**2 + mu0 / tau0**2)
+
+map_mu = map_fit(log_likelihood_mu, log_prior_mu, x0=np.array([0.0]))
+laplace = laplace_approximation(log_likelihood_mu, log_prior_mu, map_mu.x)
+print(f"closed-form posterior: mean={post_mean:.4f}, std={np.sqrt(post_var):.4f}")
+print(f"Laplace approximation: mean={laplace.mean[0]:.4f}, std={np.sqrt(laplace.cov[0, 0]):.4f}")
+```
+
+## MCMC: when the Gaussian guess isn't good enough
+
+A skewed or bounded posterior is where Laplace's one Gaussian shape genuinely breaks.
+Eight coin flips, seven heads, a flat prior on the success rate `theta in (0,1)`: the
+true posterior is `Beta(8, 2)` — mean `0.8`, mode `0.875`, visibly skewed toward 1. MAP
+alone needs `optimlab.optimizers.projected_gradient` (Chapter 3) here, not plain BFGS —
+the log-likelihood's curvature blows up near the `(0,1)` boundary, which sends
+unconstrained BFGS overshooting wildly:
+
+```{python}
+#| label: fig-laplace-vs-mcmc
+#| fig-cap: "The true Beta(8,2) posterior (orange), Laplace's Gaussian approximation (dashed), and a Metropolis-Hastings chain's histogram. MCMC tracks the true skew; Laplace, forced into a symmetric bell curve centered on the mode, visibly misses the shape and puts real probability mass past theta=1 -- a value that isn't even possible."
+from scipy import stats
+from optimlab.inference import metropolis_hastings
+from optimlab.optimizers.projected_gradient import projected_gradient
+from optimlab.viz import posterior_figure
+
+n_trials, n_success = 8, 7
+
+def coin_log_likelihood(params):
+    theta = params[0]
+    return n_success * jnp.log(theta) + (n_trials - n_success) * jnp.log(1 - theta)
+
+def flat_log_prior(params):
+    return 0.0 * params[0]
+
+map_theta = map_fit(
+    coin_log_likelihood, flat_log_prior, x0=np.array([0.5]),
+    solver=projected_gradient, lower=0.02, upper=0.98, lr=0.002, max_iter=5000,
+)
+laplace_theta = laplace_approximation(coin_log_likelihood, flat_log_prior, map_theta.x)
+
+def coin_log_posterior(params):
+    theta = params[0]
+    if theta <= 0.0 or theta >= 1.0:
+        return -np.inf
+    return n_success * np.log(theta) + (n_trials - n_success) * np.log(1 - theta)
+
+mcmc = metropolis_hastings(
+    coin_log_posterior, x0=np.array([0.7]), n_samples=20000, proposal_std=0.1, burn_in=2000, seed=0
+)
+print(f"MAP: {map_theta.x[0]:.4f}  (true mode 0.875)")
+print(f"Laplace mean: {laplace_theta.mean[0]:.4f}  (true posterior MEAN 0.8 -- these differ under skew)")
+print(f"MCMC sample mean: {mcmc.samples.mean():.4f}  (matches the true mean, not the mode)")
+print(f"MCMC acceptance rate: {mcmc.acceptance_rate:.3f}")
+
+posterior_figure(
+    x_range=(0.3, 1.0), true_pdf=lambda xs: stats.beta.pdf(xs, 8.0, 2.0),
+    laplace=laplace_theta, mcmc_samples=mcmc.samples,
+).show()
+```
+
+`optimlab.inference.metropolis_hastings` [@metropolis1953equation; @hastings1970monte]
+never needs the posterior's normalizing constant `p(\text{data})` — only the *ratio* of
+densities at a proposed vs. current point ever enters the accept/reject rule, and that
+constant cancels out of any ratio. The chain's own health is worth a direct look, not
+just trusted:
+
+```{python}
+#| label: fig-mcmc-trace
+#| fig-cap: "A healthy chain: the trace (left) looks like structureless noise rather than drifting or getting stuck for long stretches, and its marginal histogram (right) reproduces the same skewed shape seen above."
+from optimlab.viz import mcmc_trace_figure
+
+mcmc_trace_figure(mcmc.samples).show()
+```
+
+## EM: maximum likelihood when part of the data is missing
+
+Every method above assumed a fully observed dataset. A Gaussian mixture model breaks
+that: each point came from *one* of `k` Gaussians, but which one is exactly the
+unobserved variable. Expectation-Maximization [@dempster1977maximum] handles this by
+alternating two closed-form steps — estimate each point's *soft* assignment given the
+current component parameters (E-step), then re-fit every component's
+mean/covariance/weight to those soft assignments (M-step) — rather than taking a
+gradient step on anything:
+
+```{python}
+#| label: fig-gmm-fit
+#| fig-cap: "Three synthetic Gaussian blobs, recovered by EM from a random initialization -- colored by hard cluster assignment (argmax of the fitted soft responsibilities) purely for this plot; the fit itself never hardens the assignment. Each ellipse is that component's fitted 2-standard-deviation covariance region."
+from optimlab.inference import em_gmm
+from optimlab.viz import gmm_figure
+
+true_means = np.array([[0.0, 0.0], [8.0, 8.0], [8.0, -8.0]])
+X = np.concatenate([rng.multivariate_normal(m, 1.2 * np.eye(2), size=100) for m in true_means])
+
+gmm_result = em_gmm(X, n_components=3, seed=0)
+print(f"converged in {gmm_result.n_iter} iterations")
+print(f"fitted means:\n{gmm_result.means}")
+
+ll = np.asarray(gmm_result.log_likelihood_trajectory)
+print(f"log-likelihood monotonically non-decreasing: {np.all(np.diff(ll) >= -1e-8)}")
+
+gmm_figure(X, gmm_result).show()
+```
+
+Unlike every gradient-based solver in this repo, EM carries a genuine guarantee with no
+step-size condition attached to it: each E-step + M-step cycle maximizes a surrogate
+that lower-bounds the true log-likelihood and touches it exactly at the current
+parameters (a direct consequence of Jensen's inequality), so the true log-likelihood
+can never *decrease* from one iteration to the next — checked directly above rather than
+just asserted. It's still only a *local* maximizer, though: which basin a real run lands
+in depends on the random initialization, the same caveat every gradient-free method in
+Chapter 4 carries.
+
+## Backend link: a fourth black-box optimizer
+
+Chapter 4 compared three from-scratch black-box methods — simulated annealing, a genetic
+algorithm, particle swarm — none of which need a gradient. `optimlab.backends
+.optuna_minimize` adds a fourth, and a structurally different one: Optuna's default TPE
+sampler is *sequential*, fitting a probabilistic model of "which region looks promising"
+from every trial so far, rather than evolving a fixed-size population all at once.
+
+```{python}
+#| label: optuna-comparison
+from optimlab.landscapes import get
+from optimlab.optimizers import genetic_algorithm, particle_swarm, simulated_annealing
+from optimlab.backends import optuna_minimize
+
+bf = get("rastrigin")
+x0 = np.array([4.3, -3.7])
+n_evals = 3000
+
+results = {
+    "genetic_algorithm": genetic_algorithm(bf.problem(x0=x0.copy()), population_size=60, max_generations=n_evals // 60, seed=0),
+    "particle_swarm": particle_swarm(bf.problem(x0=x0.copy()), seed=0),
+    "simulated_annealing": simulated_annealing(bf.problem(x0=x0.copy()), max_iter=n_evals, initial_temp=5.0, cooling_rate=0.998, seed=0),
+    "optuna (TPE)": optuna_minimize(bf.problem(x0=x0.copy()), bounds=(-5.12, 5.12), n_trials=n_evals, seed=0),
+}
+for name, r in results.items():
+    print(f"{name:22s} f={r.f:.5f}")
+```
+
+All four land in Rastrigin's global basin from the same budget of roughly `n_evals`
+objective calls — not a clean "the new backend wins" story, just confirmation that a
+real sequential model-based optimizer is a legitimate fourth option alongside this
+repo's from-scratch population methods, worth reaching for when each objective call is
+genuinely expensive (real hyperparameter tuning) rather than the cheap benchmark
+function used here to test it.
+
+## What's next
+
+Every problem in this book so far has lived in a handful of dimensions — few enough to
+plot a contour, watch a path, draw a vector by hand. Phase 6 is this repo's flagship
+module: building real intuition for what a loss surface with millions to billions of
+parameters actually looks like, and why gradient descent still works on it anyway.

@@ -249,12 +249,58 @@ half-finished chapters.
       footgun along the way — a fig-cap containing bare `^2` text (not LaTeX) was
       silently parsed as superscript markup, mangling the caption.
 
-## Phase 5 — Bayesian modeling and estimation — **next up**
+## Phase 5 — Bayesian modeling and estimation — **done**
 
-- MLE/MAP, Bayesian inference, EM/GMMs, least squares as statistical estimation.
-- Backend link: Optuna/Bayesian-optimization adapters for black-box hyperparameter search.
+- [x] `optimlab.inference.mle_fit` / `map_fit`: MLE and MAP as ordinary `Problem`
+      minimizations (negative log-likelihood, optionally plus a negative log-prior),
+      with a pluggable `solver` so a boundary-constrained parameter (a probability, a
+      variance) can use `projected_gradient` instead of plain BFGS — needed in practice,
+      not hypothetically: unconstrained BFGS overshoots wildly on a Beta-Binomial
+      log-likelihood's unbounded boundary curvature.
+- [x] Least squares as statistical estimation: verified, not just asserted — fitting the
+      identical data through `optimlab.linalg.least_squares` (Chapter 3's SVD-derived
+      solver) and through `mle_fit` with a Gaussian log-likelihood lands on the same
+      optimum to `1e-6`, and likewise `ridge_regression` vs. `map_fit` with a matching
+      Gaussian prior. Regularization and a prior turn out to be the same object, not
+      just an analogy.
+- [x] `optimlab.inference.laplace_approximation`: Gaussian approximation to a posterior
+      at its MAP mode, covariance from the inverse Hessian there (reusing
+      `optimlab.core._autohess`). Verified exact on a conjugate Gaussian-Gaussian model
+      (where the true posterior already is Gaussian), and shown breaking down on a
+      skewed Beta-Binomial posterior — its Gaussian shape assigns real probability mass
+      past the parameter's valid boundary, and its mean lands on the mode rather than
+      the true posterior mean.
+- [x] `optimlab.inference.metropolis_hastings`: from-scratch random-walk MCMC sampler.
+      Verified against the same two conjugate models — matches the closed-form
+      Gaussian-Gaussian posterior's mean/std, and (unlike Laplace) correctly recovers
+      the skewed Beta-Binomial posterior's true mean rather than its mode.
+- [x] `optimlab.inference.em_gmm`: Expectation-Maximization for Gaussian mixture models
+      — the one genuinely new algorithm this phase adds, alternating closed-form E/M
+      steps rather than taking a gradient step at all. Verified two ways: the true
+      log-likelihood is checked directly to be monotonically non-decreasing across
+      iterations (EM's one guarantee, a consequence of Jensen's inequality — no
+      step-size condition needed the way every gradient method in this repo has one),
+      and three well-separated synthetic cluster means are recovered to within 0.1.
+- [x] Backend link: `optimlab.backends.optuna_minimize` — a fourth black-box optimizer
+      (Optuna's TPE sampler) alongside Phase 3's from-scratch `genetic_algorithm`/
+      `particle_swarm`/`simulated_annealing`, following the same try/except-absent
+      pattern as `cvxpy_backend` if the `backends` extra isn't installed.
+- [x] Three visualizations (`optimlab/viz/inference.py`): `posterior_figure` (true
+      density / Laplace's Gaussian / MCMC's histogram overlaid — the figure that makes
+      the Beta-Binomial skew mismatch immediately visible), `mcmc_trace_figure` (chain
+      trace + marginal histogram, the standard first-look mixing diagnostic), and
+      `gmm_figure` (fitted data colored by hard cluster assignment, with each
+      component's covariance drawn as an n-std ellipse via its eigendecomposition). All
+      three rendered and visually reviewed before committing.
+- [x] Docs chapter (`06-bayesian-modeling-and-estimation.qmd`) covering all of the
+      above: MLE, least-squares-as-MLE and ridge-as-MAP (both verified live in the
+      rendered chapter, not just claimed), the Laplace approximation, MCMC (with the
+      Beta-Binomial skew comparison and a trace-diagnostic figure), EM/GMM, and the
+      optuna backend comparison (four methods landing in the same basin, reported
+      honestly rather than as a "the new backend wins" story). Full site rendered and
+      every section/figure reviewed in a real browser tab.
 
-## Phase 6 — High-dimensional non-convexity: the flagship module
+## Phase 6 — High-dimensional non-convexity: the flagship module — **next up**
 
 The centerpiece motivating this whole repo: building real intuition for what a
 million-to-billion-dimensional non-convex loss surface looks like, and why gradient

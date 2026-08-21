@@ -22,6 +22,7 @@ book:
     - chapters/03-least-squares.qmd
     - chapters/04-nonsmooth-and-global-optimization.qmd
     - chapters/05-constraints-and-duality.qmd
+    - chapters/06-bayesian-modeling-and-estimation.qmd
   navbar:
     background: light
 
