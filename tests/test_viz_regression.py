@@ -4,6 +4,7 @@ import pytest
 
 from optimlab.linalg import least_squares
 from optimlab.viz import (
+    lasso_path_figure,
     regression_fit_figure,
     residuals_figure,
     ridge_path_figure,
@@ -84,3 +85,34 @@ def test_ridge_path_figure_coefficients_shrink_to_zero_at_large_alpha():
     for trace in fig.data:
         assert abs(trace.y[-1]) < abs(trace.y[0])
         assert abs(trace.y[-1]) < 1e-4
+
+
+def test_lasso_path_figure_has_one_line_per_feature():
+    rng = np.random.default_rng(2)
+    A = rng.standard_normal((30, 4))
+    b = rng.standard_normal(30)
+    alphas = np.logspace(-2, 2, 8)
+    fig = lasso_path_figure(A, b, alphas)
+    assert len(fig.data) == 4
+    for trace in fig.data:
+        np.testing.assert_allclose(trace.x, alphas)
+
+
+def test_lasso_path_figure_hits_exact_zero_unlike_ridge():
+    """The qualitative point of putting LASSO next to ridge: LASSO coefficients reach
+    *exactly* zero at large-enough alpha and stay there, where ridge's only approach it
+    in the limit.
+    """
+    rng = np.random.default_rng(4)
+    A = rng.standard_normal((30, 3))
+    x_true = np.array([2.0, -1.5, 0.0])
+    b = A @ x_true + 0.01 * rng.standard_normal(30)
+    alphas = np.logspace(-2, 3, 30)
+
+    fig = lasso_path_figure(A, b, alphas)
+    # the truly-irrelevant feature (x2) should be exactly zero for large alpha
+    assert fig.data[2].y[-1] == pytest.approx(0.0, abs=1e-8)
+
+    ridge_fig = ridge_path_figure(A, b, alphas)
+    # ridge shrinks the same feature but never hits exactly zero at a finite alpha
+    assert abs(ridge_fig.data[2].y[-2]) > 1e-8

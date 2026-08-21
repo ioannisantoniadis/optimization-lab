@@ -131,6 +131,31 @@ def svd_conditioning_figure(A: ArrayLike, *, dark: bool = False) -> go.Figure:
     return fig
 
 
+def _regularization_path_figure(
+    coefficients: ArrayLike, alphas: ArrayLike, names: list[str], title: str, *, dark: bool
+) -> go.Figure:
+    colors = contrasting_categorical(dark=dark)
+    fig = go.Figure()
+    for j, name in enumerate(names):
+        fig.add_trace(
+            go.Scatter(
+                x=alphas, y=coefficients[:, j], mode="lines", name=name,
+                line={"color": colors[j % len(colors)], "width": 2},
+                hovertemplate=f"{name}<br>alpha=%{{x:.3g}}<br>coef=%{{y:.4g}}<extra></extra>",
+            )
+        )
+    fig.add_hline(y=0, line={"color": "#898781", "width": 1})
+    fig.update_layout(
+        **layout_template(
+            dark=dark, title=title,
+            xaxis_title="alpha", yaxis_title="coefficient value", xaxis_type="log",
+        ),
+    )
+    fig.update_xaxes(dtick=1)  # decade ticks only (10^0, 10^1, ...) -- default log-axis
+    # minor ticks (..., 2, 5, 10, 20, 50, ...) get crowded at this figure's width.
+    return fig
+
+
 def ridge_path_figure(
     A: ArrayLike, b: ArrayLike, alphas: ArrayLike, *, feature_names: list[str] | None = None, dark: bool = False
 ) -> go.Figure:
@@ -139,33 +164,52 @@ def ridge_path_figure(
     `s / (s^2 + alpha)` shrinkage factor: as `alpha -> infinity`, every term -> 0), but
     coefficients riding on small singular values (the directions `condition_number`
     flags as noise-prone) shrink fastest, since `alpha` dominates a small `s^2` sooner.
+    Compare `lasso_path_figure`: ridge's curves ease toward zero and touch it only in
+    the limit; LASSO's visibly *hit* zero at a finite `alpha` and stay there.
     """
     from optimlab.linalg.regression import ridge_regression
 
     A = np.asarray(A, dtype=float)
     alphas = np.asarray(alphas, dtype=float)
-    n_features = A.shape[1]
-    names = feature_names or [f"x{i}" for i in range(n_features)]
-    colors = contrasting_categorical(dark=dark)
-
+    names = feature_names or [f"x{i}" for i in range(A.shape[1])]
     coefficients = np.array([ridge_regression(A, b, alpha).x for alpha in alphas])
+    return _regularization_path_figure(coefficients, alphas, names, "Ridge regularization path", dark=dark)
 
-    fig = go.Figure()
-    for j in range(n_features):
-        fig.add_trace(
-            go.Scatter(
-                x=alphas, y=coefficients[:, j], mode="lines", name=names[j],
-                line={"color": colors[j % len(colors)], "width": 2},
-                hovertemplate=f"{names[j]}<br>alpha=%{{x:.3g}}<br>coef=%{{y:.4g}}<extra></extra>",
-            )
-        )
-    fig.add_hline(y=0, line={"color": "#898781", "width": 1})
-    fig.update_layout(
-        **layout_template(
-            dark=dark, title="Ridge regularization path",
-            xaxis_title="alpha", yaxis_title="coefficient value", xaxis_type="log",
-        ),
+
+def lasso_path_figure(
+    A: ArrayLike, b: ArrayLike, alphas: ArrayLike, *, feature_names: list[str] | None = None, dark: bool = False
+) -> go.Figure:
+    """LASSO's regularization path, solved at each `alpha` by
+    `optimlab.optimizers.proximal_gradient` (soft-thresholding, not a closed form the
+    way ridge has one) — the point of putting this next to `ridge_path_figure` is the
+    kinks: a LASSO coefficient's path is piecewise linear and reaches *exactly* zero at
+    some finite `alpha`, then stays there, instead of ridge's smooth asymptotic approach.
+    That's `soft_threshold`'s dead zone showing up directly in the path.
+    """
+    from optimlab.optimizers.proximal_gradient import (
+        CompositeProblem,
+        proximal_gradient,
+        soft_threshold,
     )
-    fig.update_xaxes(dtick=1)  # decade ticks only (10^0, 10^1, ...) -- default log-axis
-    # minor ticks (..., 2, 5, 10, 20, 50, ...) get crowded at this figure's width.
-    return fig
+
+    A = np.asarray(A, dtype=float)
+    b = np.asarray(b, dtype=float)
+    alphas = np.asarray(alphas, dtype=float)
+    names = feature_names or [f"x{i}" for i in range(A.shape[1])]
+    L = np.linalg.eigvalsh(A.T @ A).max()
+
+    coefficients = []
+    x0 = np.zeros(A.shape[1])
+    for alpha in alphas:
+        problem = CompositeProblem(
+            grad_smooth=lambda x, A=A, b=b: A.T @ (A @ x - b),
+            prox_nonsmooth=lambda v, t, alpha=alpha: soft_threshold(v, alpha * t),
+            x0=x0,
+        )
+        result = proximal_gradient(problem, lr=1.0 / L, max_iter=2000, tol=1e-10)
+        coefficients.append(result.x)
+        x0 = result.x  # warm-start the next (nearby) alpha from this one
+
+    return _regularization_path_figure(
+        np.array(coefficients), alphas, names, "LASSO regularization path", dark=dark
+    )
