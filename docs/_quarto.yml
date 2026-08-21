@@ -8,13 +8,13 @@ book:
   description: >-
     From-scratch algorithms, real solver comparisons, cross-domain problems, and
     intuition for what a million-parameter non-convex loss surface actually looks like.
-  site-url: "https://github.com/"  # placeholder — update once the GitHub repo exists
-  repo-url: "https://github.com/"  # placeholder — update once the GitHub repo exists
+  site-url: "https://ioannisantoniadis.github.io/optimization-lab/"
+  repo-url: "https://github.com/ioannisantoniadis/optimization-lab"
   repo-actions: [edit, issue]
   page-footer:
     left: >-
       Built while working through Steven L. Brunton's *Optimization Bootcamp*.
-      Source on [GitHub](https://github.com/).
+      Source on [GitHub](https://github.com/ioannisantoniadis/optimization-lab).
     right: "Rendered with [Quarto](https://quarto.org)."
   chapters:
     - index.qmd
