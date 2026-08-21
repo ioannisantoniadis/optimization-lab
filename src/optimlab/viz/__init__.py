@@ -7,12 +7,14 @@ from optimlab.viz.compare import (
     surface_race_figure,
 )
 from optimlab.viz.landscape import contour_figure, surface_figure, transform_values
+from optimlab.viz.polytope import polytope_figure
 
 __all__ = [
     "add_trajectory",
     "add_trajectory_3d",
     "contour_figure",
     "convergence_figure",
+    "polytope_figure",
     "race_figure",
     "solver_color_map",
     "surface_figure",
