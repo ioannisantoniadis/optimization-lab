@@ -4,27 +4,34 @@
 comparisons, cross-domain problems, and — the part most textbooks skip — actual intuition
 for what a million- or billion-dimensional non-convex loss surface looks like.*
 
-> Working title for now — the local folder is still `optimization/`. Rename it and the
-> GitHub repo to `optimization-lab` whenever convenient; the package itself is already
-> named `optimlab`.
+Live at [github.com/ioannisantoniadis/optimization-lab](https://github.com/ioannisantoniadis/optimization-lab)
+· docs: [ioannisantoniadis.github.io/optimization-lab](https://ioannisantoniadis.github.io/optimization-lab/)
+
+> The local folder is still `optimization/` even though the repo and package
+> (`optimlab`) are already named `optimization-lab`. Rename it whenever convenient:
+> `mv ~/GitHub/optimization ~/GitHub/optimization-lab`.
 
 ## Why this exists
 
 I've used SGD, Adam, and friends as black boxes throughout a machine learning career
 without ever really digging into *why* they work, especially on the wildly non-convex,
-billion-parameter loss surfaces of modern neural nets. Separately, I've been working
-through Steven Brunton's [*Optimization Bootcamp*](https://www.youtube.com/@eigensteve)
-(book + lecture series), which covers the classical theory well — convexity, gradients,
-Lagrangians, duality — but like most textbooks, stops short of the high-dimensional
-non-convex regime where the interesting open questions live.
+billion-parameter loss surfaces of modern neural nets. The spark for finally doing that
+digging was working through Steven Brunton's [*Optimization Bootcamp*](https://www.youtube.com/@eigensteve)
+(book + lecture series) — but this repo isn't a transcription of it. Classical treatments
+(Brunton's included) tend to stop short of the high-dimensional non-convex regime where
+the interesting open questions live, and don't reach into the domains (physics, econ,
+sociology, personal decision-making) where these techniques quietly do real work. The
+structure and content here draw on standard references (Nocedal & Wright, Boyd &
+Vandenberghe), the primary literature (cited per-topic as it's used — see `ROADMAP.md`),
+existing open-source tooling, and original material, with Brunton's book as one starting
+point among several rather than the blueprint.
 
-This repo is the place to close both gaps at once: relearn the classical toolkit by
-building it from scratch, then push past it into the regime that classical textbooks
-don't cover, using the tools we just built.
+This repo is the place to close both gaps: relearn the classical toolkit by building it
+from scratch, then push past what any single textbook covers.
 
 Three commitments shape everything here:
 
-1. **Build it, don't just import it.** Every core algorithm the book teaches — gradient
+1. **Build it, don't just import it.** Every core classical algorithm — gradient
    descent, momentum, Adam, Newton, BFGS, simplex, ADMM, proximal methods, simulated
    annealing, genetic algorithms — is implemented from scratch in `optimlab`, because
    implementing an algorithm is how you actually learn it. Mature libraries (`scipy`,
@@ -57,7 +64,7 @@ src/optimlab/
   viz/                Shared Plotly figure helpers (surfaces, trajectories, spectra, "solver races")
   problems/           Cross-domain problem library: physics, economics, sociology/networks,
                        machine learning, and a personal "life as optimization" case study
-docs/                 Static reference site (the "book" — theory, derivations, references)
+docs/                 Static reference site — theory, derivations, live-rendered figures
 notebooks/marimo/     Reactive, git-diffable exploration apps (sliders, live re-solving)
 tests/                Correctness + convergence tests for every solver, against known optima
 ```
@@ -65,14 +72,11 @@ tests/                Correctness + convergence tests for every solver, against 
 ## Status
 
 Early build. See [`ROADMAP.md`](ROADMAP.md) for the phased plan — **Phase 1** (core
-framework + Chapter 1–2 foundations) is now complete: the `Problem` / solver framework,
-9 from-scratch gradient-based solvers, 8 benchmark landscapes, a colorblind-validated
-Plotly viz layer, a first reactive marimo app, and a rendered [Quarto](https://quarto.org)
-docs site walking through convexity, gradients, and the solver zoo with live figures.
-
-> The site's navbar/footer GitHub links are still placeholders (`https://github.com/`)
-> in `docs/_quarto.yml` — update `book.site-url` / `book.repo-url` once this repo has a
-> real GitHub remote.
+framework + classical foundations: convexity, gradients, gradient-based solvers) is now
+complete: the `Problem` / solver framework, 9 from-scratch gradient-based solvers, 8
+benchmark landscapes, a colorblind-validated Plotly viz layer, a first reactive marimo
+app, and a rendered [Quarto](https://quarto.org) docs site with live figures, deployed to
+GitHub Pages.
 
 ## Getting started
 
@@ -107,9 +111,19 @@ quarto render docs    # one-shot build to docs/_site/
 
 ## References
 
+No single source drives this repo's structure or content — the reading list is
+deliberately plural:
+
 - Steven L. Brunton, *Optimization: A Bootcamp for Machine Learning, Inverse Problems,
-  and Control* (draft, Cambridge University Press) — the primary text motivating this repo's
-  structure. Companion code: [github.com/dynamicslab/optimizationbook](https://github.com/dynamicslab/optimizationbook).
-- Per-topic further-reading lists (papers, blog posts, alternate implementations) live
-  next to each module/notebook rather than in one giant bibliography — see `ROADMAP.md`
-  for the key papers behind the high-dimensional non-convexity module specifically.
+  and Control* (draft, Cambridge University Press) — the spark for this project, and
+  still a good on-ramp for the classical toolkit. Companion code:
+  [github.com/dynamicslab/optimizationbook](https://github.com/dynamicslab/optimizationbook).
+- Standard references for the material Brunton's book compresses: Nocedal & Wright,
+  *Numerical Optimization*; Boyd & Vandenberghe, *Convex Optimization*.
+- Primary literature, cited per-topic as it's actually used rather than gathered into one
+  bibliography — see `ROADMAP.md`'s Phase 6 for the papers behind the high-dimensional
+  non-convexity module specifically, and `docs/references.bib` for everything cited on
+  the docs site.
+- Existing open-source tooling used deliberately as correctness oracles / scale-up
+  backends (`scipy`, `cvxpy`, `jax`, `optuna`, `nevergrad`, `pymoo`) rather than vendored
+  wholesale — see the "Build it, don't just import it" commitment above.

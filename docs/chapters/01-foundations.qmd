@@ -2,10 +2,11 @@
 title: "Foundations: Convexity, Gradients, and the Gradient-Based Solver Zoo"
 ---
 
-This chapter covers the same ground as Chapters 1–2 of Brunton's *Optimization
-Bootcamp* [@brunton2026optimization] — convexity, the gradient, and the family of
-gradient-based solvers — but every claim below is backed by a from-scratch
-implementation in `optimlab` that you can run yourself. Where the book proves a
+This chapter covers the classical foundations every treatment of optimization starts
+with — convexity, the gradient, and the family of gradient-based solvers (see e.g.
+Brunton [-@brunton2026optimization] or Nocedal & Wright [-@nocedal2006numerical] for
+standard textbook treatments) — but every claim below is backed by a from-scratch
+implementation in `optimlab` that you can run yourself. Where a textbook proves a
 theorem, this chapter shows you the same fact happening to a real solver on a real
 landscape.
 
@@ -87,7 +88,7 @@ each row — this table is the map, not the territory.
 
 ## Watching it happen: gradient descent zig-zags, Newton doesn't
 
-The book proves gradient descent's convergence rate degrades with a problem's
+Standard theory proves gradient descent's convergence rate degrades with a problem's
 *condition number* (the ratio of a quadratic's largest to smallest curvature). Rather
 than take that on faith, here's the actual zig-zag, on an anisotropic quadratic with
 condition number 100:

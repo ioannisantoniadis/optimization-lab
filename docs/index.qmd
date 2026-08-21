@@ -1,11 +1,14 @@
 # Welcome {.unnumbered}
 
 This is the reference site for **optimization-lab** — a from-scratch exploration of
-applied mathematical optimization, built while working through Steven L. Brunton's
-[*Optimization Bootcamp*](https://www.youtube.com/@eigensteve) [@brunton2026optimization].
+applied mathematical optimization. The spark was working through Steven L. Brunton's
+[*Optimization Bootcamp*](https://www.youtube.com/@eigensteve) [@brunton2026optimization],
+but the site draws on the standard optimization literature broadly (see the
+bibliography and the project's [`README`](https://github.com/ioannisantoniadis/optimization-lab)
+for the full reading list) rather than following any one source chapter by chapter.
 
 Three commitments shape everything here, carried over from the project's
-[README](https://github.com/):
+[README](https://github.com/ioannisantoniadis/optimization-lab):
 
 1. **Build it, don't just import it.** Every core algorithm is implemented from scratch
    in the `optimlab` Python package. Mature libraries are used deliberately as
@@ -20,7 +23,8 @@ Three commitments shape everything here, carried over from the project's
 
 Chapters are built up progressively, each landing once the corresponding `optimlab`
 module is implemented and tested — see the project's
-[`ROADMAP.md`](https://github.com/) for the full phased plan. A chapter here is never
+[`ROADMAP.md`](https://github.com/ioannisantoniadis/optimization-lab/blob/main/ROADMAP.md)
+for the full phased plan. A chapter here is never
 published ahead of the code it's explaining.
 
 ## Reading this site vs. reading the code

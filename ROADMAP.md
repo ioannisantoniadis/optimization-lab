@@ -1,12 +1,18 @@
 # Roadmap
 
-Phased plan, loosely mapped to the chapters of Brunton's *Optimization Bootcamp* but
-reorganized around three repo-specific threads that the book doesn't cover: the
+Phased plan, organized around the standard topic progression of applied optimization
+(the same rough order most treatments of the field use — Brunton's *Optimization
+Bootcamp*, Nocedal & Wright's *Numerical Optimization*, Boyd & Vandenberghe's *Convex
+Optimization* all agree on convex-before-nonconvex, unconstrained-before-constrained),
+plus three repo-specific threads no single one of those covers on its own: the
 `Problem`/solver-arena framework, the high-dimensional non-convex intuition module, and
-cross-domain (including personal life-planning) case studies. Each phase should leave the
-repo in a working, tested, documented state — no half-finished chapters.
+cross-domain (including personal life-planning) case studies. No phase is a
+transcription of any one source — see `README.md`'s References section for the full
+reading list feeding each phase, and each phase's own bullets for the specific papers
+behind it. Each phase should leave the repo in a working, tested, documented state — no
+half-finished chapters.
 
-## Phase 1 — Core framework + classical gradient-based optimization (book Ch. 1–2) — **done**
+## Phase 1 — Core framework + classical gradient-based optimization — **done**
 
 - [x] `optimlab.core`: `Problem`, `OptimizeResult`, the solver call signature every
       algorithm (from-scratch or backend) shares. Autodiff-backed gradients/Hessians via
@@ -31,8 +37,8 @@ repo in a working, tested, documented state — no half-finished chapters.
       sliders and watch the solver-race and convergence plots redraw. Verified by actually
       running it (`marimo check` + `marimo export html`, then loaded in a real browser),
       not just eyeballing the source.
-- [x] First `docs/` page rendering the Ch. 1–2 narrative (convexity, gradients, the
-      solver zoo) with embedded figures and a link to the marimo app. Built as a
+- [x] First `docs/` page covering convexity, gradients, and the gradient-based solver
+      zoo, with embedded figures and a link to the marimo app. Built as a
       [Quarto](https://quarto.org) book (`docs/`) that executes real `optimlab` code at
       render time via a Jupyter kernel bound to this project's venv — figures are
       regenerated from the actual solvers on every render, never hand-copied images.
@@ -43,11 +49,11 @@ repo in a working, tested, documented state — no half-finished chapters.
       page embeds a static snapshot instead and tells readers to run the app locally for
       genuine interactivity, rather than silently shipping something broken.
       A GitHub Actions workflow (`.github/workflows/docs.yml`) builds and deploys to
-      GitHub Pages on push to `main`; unlike everything above, this hasn't been run for
-      real yet (no GitHub remote exists to push to) — treat it as unverified until a
-      first deploy succeeds.
+      GitHub Pages on push to `main` — live at
+      [ioannisantoniadis.github.io/optimization-lab](https://ioannisantoniadis.github.io/optimization-lab/),
+      confirmed by an actual successful run, not just a written-and-hoped-for workflow.
 
-## Phase 2 — Convex workhorses: linear programming & least squares (Ch. 3–4) — **next up**
+## Phase 2 — Convex workhorses: linear programming & least squares — **next up**
 
 - Simplex method from scratch + polytope/vertex visualization in 3D; brief detour into
   why LP vertices are the right mental model for high-dimensional feasible regions.
@@ -56,7 +62,7 @@ repo in a working, tested, documented state — no half-finished chapters.
 - `optimlab.backends`: scipy.optimize / cvxpy adapters, used here first as correctness
   oracles for the from-scratch simplex and CG implementations.
 
-## Phase 3 — Nonsmooth, gradient-free, and global optimization (Ch. 5)
+## Phase 3 — Nonsmooth, gradient-free, and global optimization
 
 - Proximal gradient, Nelder–Mead, simulated annealing, a from-scratch genetic algorithm,
   particle swarm.
@@ -65,14 +71,14 @@ repo in a working, tested, documented state — no half-finished chapters.
   **life-as-optimization** case study (see Phase 8) lands here as a running example rather
   than waiting for the full roadmap.
 
-## Phase 4 — Constraints and duality (Ch. 6)
+## Phase 4 — Constraints and duality
 
 - Lagrange multipliers, KKT conditions, duality and duality gaps, interior point methods,
   ADMM, a short calculus-of-variations / Euler–Lagrange excursion.
 - Visual goal: make a KKT condition and a duality gap *look like something geometrically*,
   not just algebra.
 
-## Phase 5 — Bayesian modeling and estimation (Ch. 7)
+## Phase 5 — Bayesian modeling and estimation
 
 - MLE/MAP, Bayesian inference, EM/GMMs, least squares as statistical estimation.
 - Backend link: Optuna/Bayesian-optimization adapters for black-box hyperparameter search.
@@ -125,7 +131,7 @@ Planned content, with the literature behind each piece:
   Neural Networks*) — the "lazy training" story for why wide nets behave locally like a
   convex quadratic. Secondary source: Lilian Weng's NTK derivation write-up.
 
-## Phase 7 — Domain applications (Ch. 8–10)
+## Phase 7 — Domain applications: inverse problems, control, machine learning
 
 - Inverse problems: medical/computational imaging, PDE-constrained inversion, system ID.
 - Control: LQR, nonlinear optimal control, dynamic programming, MPC, a light RL bridge.
@@ -157,12 +163,13 @@ can be pitted against each other.
 ## Explicit non-goals / differentiation
 
 A `WebSearch`-based scan turned up several existing single-purpose optimizer-visualization
-repos (`lilipads/gradient_descent_viz`, `Gautam-J/optimizers-visualized`, etc.) and the
-`tomgoldstein/loss-landscape` companion code for Li et al. 2018. None combine: algorithms
-built from scratch, a common cross-domain `Problem` interface, *and* an explicit
-low-dimension → high-dimension intuition bridge. That combination is this repo's reason
-to exist rather than duplicate what's already out there. Before writing Phase 2/7 content
-that overlaps the book directly, clone and skim
-[dynamicslab/optimizationbook](https://github.com/dynamicslab/optimizationbook) so this
-repo stays complementary (interactive/cross-domain/high-dimensional) rather than a
-re-transcription of the book's own code.
+repos (`lilipads/gradient_descent_viz`, `Gautam-J/optimizers-visualized`, etc.), the
+`tomgoldstein/loss-landscape` companion code for Li et al. 2018, and Brunton's own
+[dynamicslab/optimizationbook](https://github.com/dynamicslab/optimizationbook). None
+combine: algorithms built from scratch, a common cross-domain `Problem` interface, *and*
+an explicit low-dimension → high-dimension intuition bridge. That combination — plus the
+domain reach in Phases 7–8 (physics, econ, sociology, personal decision-making) that no
+optimization textbook attempts — is this repo's reason to exist rather than duplicate or
+transcribe what's already out there. Before writing Phase 2/7 content that overlaps any
+one of these closely, skim the relevant existing project so this repo stays
+complementary rather than a re-transcription of someone else's code or curriculum.
