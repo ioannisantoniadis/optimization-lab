@@ -11,9 +11,19 @@ against the constraint `x = z` tying them together, with a running "dual" variab
     u_{k+1} = u_k + x_{k+1} - z_{k+1}
 
 `x` and `z` both solve the same problem at convergence (`x_{k+1} - z_{k+1} -> 0`, the
-**primal residual** this module uses as its stopping criterion); they differ during the
-run because each is mid-way through its own proximal step, not yet reconciled with the
-other's.
+**primal residual**); they differ during the run because each is mid-way through its own
+proximal step, not yet reconciled with the other's.
+
+The primal residual alone is *not* a safe stopping criterion, though it might look like
+one: it can hit (near-)zero long before the run has actually converged, particularly at
+a large `rho` -- confirmed directly on this module's own LASSO test problem, where at
+`rho=50` the primal residual transiently dips to ~1e-17 at iteration 5 while the
+objective is still ~50% off the true minimum, then *rises* again before properly
+decaying. `x` and `z` agreeing with each other says nothing about whether they've also
+converged to the right value. The standard fix (Boyd et al. 2011, §3.3.1) also tracks
+the **dual residual** `rho * ||z_{k+1} - z_k||` -- `z` barely moving between steps is
+what actually signals the dual variable `u` has stopped needing to correct anything --
+and requires both below `tol` before declaring convergence.
 """
 
 from __future__ import annotations
@@ -70,15 +80,17 @@ def admm(
     each proximal step is allowed to move — unlike proximal gradient's step size, `rho`
     doesn't need to respect any Lipschitz bound (ADMM converges for any `rho > 0`), so
     it's mostly a practical convergence-speed tuning knob rather than a stability
-    requirement. Convergence is checked via the **primal residual**
-    `||x_{k+1} - z_{k+1}||` — the two blocks agreeing is exactly the constraint `x = z`
-    being satisfied.
+    requirement. Convergence requires *both* the primal residual `||x-z||` and the dual
+    residual `rho * ||z_{k+1} - z_k||` below `tol` (see the module docstring for why the
+    primal residual by itself isn't safe to stop on). `OptimizeResult
+    .grad_norm_trajectory` holds `max(primal_residual, dual_residual)` at each step —
+    the single conservative number driving that stopping decision.
     """
     x = problem.x0.copy()
     z = problem.x0.copy()
     u = np.zeros_like(x)
 
-    x_hist, f_hist, g_hist = [x.copy()], [problem.f(x)], [float(np.linalg.norm(x - z))]
+    x_hist, f_hist, g_hist = [x.copy()], [problem.f(x)], [0.0]
 
     # Unlike every other from-scratch solver here, the *initial* residual (x0 - z0) is
     # always exactly zero by construction (both start at problem.x0) -- it says nothing
@@ -88,19 +100,21 @@ def admm(
     n_iter = 0
     while not converged and n_iter < max_iter:
         x = problem.prox_f(z - u, 1.0 / rho)
+        z_prev = z
         z = problem.prox_g(x + u, 1.0 / rho)
         u = u + x - z
 
         n_iter += 1
         primal_residual = float(np.linalg.norm(x - z))
+        dual_residual = rho * float(np.linalg.norm(z - z_prev))
         x_hist.append(x.copy())
         f_hist.append(problem.f(x))
-        g_hist.append(primal_residual)
+        g_hist.append(max(primal_residual, dual_residual))
 
-        if primal_residual < tol:
+        if primal_residual < tol and dual_residual < tol:
             converged = True
 
     return track_iterations(
         x_hist, f_hist, g_hist, converged=converged, solver_name="admm",
-        message="primal residual below tol" if converged else "max_iter reached",
+        message="primal and dual residuals below tol" if converged else "max_iter reached",
     )

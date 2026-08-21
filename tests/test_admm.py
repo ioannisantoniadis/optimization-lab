@@ -87,10 +87,36 @@ def test_always_runs_at_least_one_iteration():
     assert result.converged
 
 
-def test_primal_residual_trends_toward_zero():
-    """residuals[0] is trivially 0 (x0 == z0 by construction, before any real work) --
-    the meaningful check is that the residual becomes nonzero once ADMM actually starts
-    reconciling x and z, then settles back near zero once it converges.
+def test_large_rho_does_not_falsely_converge_on_a_transient_primal_dip():
+    """At rho=50 on this LASSO instance, the *primal* residual alone transiently hits
+    ~1e-17 at iteration 5 -- x and z briefly agreeing by coincidence, long before the
+    run has actually reached the true minimum -- then rises again before properly
+    decaying. A primal-residual-only stopping rule declares victory right there; the
+    dual residual (`admm`'s actual stopping check) does not, so the real optimum is
+    only accepted once both are genuinely small.
+    """
+    rng = np.random.default_rng(0)
+    m, n = 50, 20
+    A = rng.standard_normal((m, n))
+    x_true = np.zeros(n)
+    x_true[[2, 5, 9]] = [3.0, -2.0, 1.5]
+    b = A @ x_true + 0.01 * rng.standard_normal(m)
+    alpha = 1.0
+
+    problem = _lasso_admm_problem(A, b, alpha, rho=50.0, x0=np.zeros(n))
+    result = admm(problem, rho=50.0, max_iter=5000, tol=1e-6)
+
+    true_optimal_f = 6.466  # cross-checked against cvxpy in test_lasso_matches_cvxpy
+    assert result.converged
+    assert result.n_iter > 5  # a primal-only rule would have stopped exactly here
+    assert result.f == pytest.approx(true_optimal_f, abs=1e-2)
+
+
+def test_residual_trends_toward_zero():
+    """grad_norm_trajectory holds max(primal, dual) residual; residuals[0] is trivially
+    0 (x0 == z0 by construction, before any real work) -- the meaningful check is that it
+    becomes nonzero once ADMM actually starts reconciling x and z, then settles back
+    near zero once it converges.
     """
     rng = np.random.default_rng(2)
     A = rng.standard_normal((30, 10))
