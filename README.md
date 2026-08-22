@@ -4,11 +4,35 @@ From-scratch implementations of core optimization algorithms, plus tooling for
 comparing solvers, visualizing landscapes, and applying them to problems across
 domains (physics, economics, machine learning).
 
+![A 2D Rastrigin function rendered as a 3D surface — the "many local minima" landscape gradient-based solvers have to deal with](docs/images/rastrigin-landscape-hero.png)
+
 - Docs site: **[ioannisantoniadis.github.io/optimization-lab](https://ioannisantoniadis.github.io/optimization-lab/)**
 - Roadmap / current status: [`ROADMAP.md`](ROADMAP.md)
 
 > Local folder note: this checkout may still be named `optimization/` rather than
 > `optimization-lab/`. Rename it whenever convenient — nothing else depends on the name.
+
+## Contents
+
+Nine docs chapters, each executing real `optimlab` code at render time (figures
+regenerated from the actual solvers, not hand-copied images):
+
+1. [Foundations: Convexity, Gradients, and the Gradient-Based Solver Zoo](https://ioannisantoniadis.github.io/optimization-lab/chapters/01-foundations.html)
+2. [Linear Programming: Vertices, Not Slopes](https://ioannisantoniadis.github.io/optimization-lab/chapters/02-linear-programming.html)
+3. [Least Squares: SVD, Conditioning, and Regularization](https://ioannisantoniadis.github.io/optimization-lab/chapters/03-least-squares.html)
+4. [Nonsmooth and Global Optimization: When There's No Slope to Follow](https://ioannisantoniadis.github.io/optimization-lab/chapters/04-nonsmooth-and-global-optimization.html)
+5. [Constraints and Duality: Where the Boundary Does the Work](https://ioannisantoniadis.github.io/optimization-lab/chapters/05-constraints-and-duality.html)
+6. [Bayesian Modeling and Estimation: The Objective Comes From Data](https://ioannisantoniadis.github.io/optimization-lab/chapters/06-bayesian-modeling-and-estimation.html)
+7. [High-Dimensional Non-Convexity: Why Gradient Descent Works Anyway](https://ioannisantoniadis.github.io/optimization-lab/chapters/07-high-dimensional-non-convexity.html)
+8. [Domain Applications: Inverse Problems, Control, and Machine Learning](https://ioannisantoniadis.github.io/optimization-lab/chapters/08-domain-applications.html)
+9. [Cross-Domain Problems and the Solver Arena: The Whole Repo, at Once](https://ioannisantoniadis.github.io/optimization-lab/chapters/09-cross-domain-problems-and-the-solver-arena.html)
+
+Plus, outside the docs site: a [solver arena](src/optimlab/arena.py) that runs every
+solver against any problem and reports a standardized comparison, eight
+[interactive marimo notebooks](#interactive-exploration-with-marimo) (one per phase)
+for hands-on exploration in your own browser, and a
+[wall-clock benchmark suite](#benchmarks) with real, warmed-up timings for every
+solver.
 
 ## Quickstart
 
