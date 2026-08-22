@@ -65,6 +65,7 @@ src/optimlab/
                   instead (Chapter 7's pendulum swing-up, Bayesian optimization)
 docs/             Quarto site: theory + write-ups, with figures executed from real code
 notebooks/marimo/ Interactive apps (see below)
+benchmarks/       Wall-clock timing harness + generated results (see below)
 tests/            Correctness/convergence tests for every solver
 ```
 
@@ -102,6 +103,22 @@ One entry point per phase, each picking that phase's most slider-worthy idea:
 - **`solver_arena_explorer.py`** (Phase 8) — pick a benchmark landscape and a starting
   point; every solver in `ALL_SOLVERS` runs against it and the ranked bar chart
   redraws live.
+
+## Benchmarks
+
+`benchmarks/BENCHMARKS.md` has actual wall-clock times for every solver, generated
+(not hand-written) by `benchmarks/run_benchmarks.py`: the full solver arena (every
+`ALL_SOLVERS` entry x every benchmark landscape), every other solver on its own
+representative problem, and the `jit_f`/`jit_residual` opt-in flags on vs off. Every
+number is a *median of several warmed-up repeats on a single reused `Problem`
+instance*, not a single cold call — `Problem`'s JAX-compiled `grad`/`hess` (and
+`jit_f`/`jit_residual`) are compiled lazily on first call and cached per-instance, so
+an unwarmed timing mostly measures JIT tracing rather than steady-state solver cost.
+Regenerate after changing a solver or adding a problem:
+
+```bash
+uv run python benchmarks/run_benchmarks.py
+```
 
 ## Building the docs site
 
