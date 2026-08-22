@@ -42,10 +42,17 @@ src/optimlab/
   highdim/        A minimal MLP wrapped as a Problem, random-matrix saddle-point
                   statistics, Lanczos Hessian eigenspectrum, filter-normalized loss
                   landscapes, mode connectivity, neural tangent kernel concentration
+  inverse/        Image deblurring (Tikhonov-regularized deconvolution), system
+                  identification (nonlinear least squares on a simulated ODE)
+  control/        LQR (Riccati recursion), nonlinear optimal control via direct
+                  shooting, value iteration for a grid-world MDP
+  ml/             Manual backpropagation (cross-checked against JAX autodiff),
+                  physics-informed neural networks
   viz/            Plotly figure helpers: landscapes, solver-comparison plots, LP feasible
                   regions, regression fit/residuals, SVD conditioning, ridge/LASSO paths,
                   central path / KKT geometry / duality gap, posterior/MCMC/GMM figures,
-                  saddle-point / Hessian-spectrum / loss-landscape / NTK figures
+                  saddle-point / Hessian-spectrum / loss-landscape / NTK figures,
+                  deblurring / system-ID / control / grid-world / PINN figures
   backends/       Correctness-oracle adapters: scipy (core dep), cvxpy and optuna (need
                   the `backends` extra) for LP, least squares, QP, and black-box search
   problems/       Cross-domain problems (physics, economics, ML, ...) — not yet populated

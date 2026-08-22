@@ -367,15 +367,65 @@ descent works on it anyway.
       and the NTK trend's small-width noise (rather than asserting clean monotonicity
       the first draft's number happened not to have).
 
-## Phase 7 — Domain applications: inverse problems, control, machine learning — **next up**
+## Phase 7 — Domain applications: inverse problems, control, machine learning — **done**
 
-- Inverse problems: medical/computational imaging, PDE-constrained inversion, system ID.
-- Control: LQR, nonlinear optimal control, dynamic programming, MPC, a light RL bridge.
-- Machine learning: backprop from scratch, training small nets/toy transformers end to
-  end with the Phase 1 optimizers (so you watch *your own* Adam implementation train a
-  real model), physics-informed ML.
+- [x] `optimlab.inverse.deblurring`: image deblurring posed as an ordinary `Problem`
+      (mean-squared reconstruction error + Tikhonov/L2 penalty on a separable Gaussian
+      blur operator) — Chapter 3's `ridge_regression` idea, solved by gradient descent
+      on an image instead of the closed-form SVD route. Verified a genuine
+      bias-variance tradeoff, not just a plausible-looking recovery: too little
+      regularization (`alpha=1e-4`) amplifies noise past the blurry observation's own
+      MSE, `alpha=0.01` cuts MSE by ~40% below it, and `alpha=0.3` over-smooths back
+      toward blur.
+- [x] `optimlab.inverse.system_id`: recovering a damped oscillator's physical
+      parameters from noisy trajectory data via `NonlinearLeastSquaresProblem` /
+      `gauss_newton` — the RK4 integrator is written entirely in `jax.numpy` so
+      autodiff flows through the simulation loop itself, giving Gauss-Newton's Jacobian
+      as a byproduct rather than a hand-derived sensitivity equation. Verified:
+      recovers `omega`/`zeta` to within 1% of their true values from noisy data.
+- [x] `optimlab.control.lqr`: LQR via the closed-form backward Riccati recursion.
+      Cross-checked against the identical finite-horizon problem posed instead as an
+      ordinary `Problem` over the flattened control sequence and solved by `bfgs` —
+      closed-form and iterative routes agree on cost to 1e-6 relative and on the
+      controls themselves to 1e-6 absolute.
+- [x] `optimlab.control.trajectory_optimization`: nonlinear optimal control via direct
+      shooting — a pendulum swing-up posed as an ordinary `Problem` over the entire
+      control sequence, an RK4-simulated nonlinear dynamics model differentiated
+      through directly (no linearization). Verified: swings from hanging straight down
+      to upright within 0.12 degrees using only `bfgs`, no new optimizer.
+- [x] `optimlab.control.dynamic_programming`: value iteration for a grid-world MDP —
+      the one genuinely new algorithm in this phase, a discrete Bellman fixed-point
+      iteration rather than continuous optimization. Verified: value increases
+      monotonically toward the goal and the greedy policy navigates around obstacles to
+      reach it. MPC and a full RL bridge scoped out for now — value iteration already
+      carries this phase's "a genuinely different algorithm shape" content.
+- [x] `optimlab.ml.backprop`: hand-implemented forward + backward pass for the
+      `optimlab.highdim.nets` MLP architecture — explicit chain rule through `tanh`
+      hidden activations and a linear output layer, no autodiff anywhere in the
+      function. Cross-checked against `optimlab.core`'s JAX-autodiff gradient on the
+      identical network and loss: agrees to `8e-17` (essentially machine precision)
+      across two different architectures.
+- [x] `optimlab.ml.pinn`: physics-informed neural networks — a network trained purely
+      from an ODE's own residual plus its initial condition, never shown the true
+      solution anywhere in its loss. Verified: matches the analytic solution to within
+      `0.0002` absolute error across the domain after training. A toy transformer
+      scoped out for now as a separate, larger undertaking.
+- [x] Six visualizations (`optimlab/viz/{inverse,control,ml}.py`): the
+      true/observed/recovered image triptych, the observed-vs-fitted trajectory
+      comparison, a shared state/control plot (reused for both LQR and the pendulum),
+      a grid-world value-function-plus-policy heatmap, and a PINN-vs-analytic-solution
+      overlay. Rendering and reviewing them surfaced a real layout bug: a
+      `scaleanchor`'d 1:1 aspect constraint across three side-by-side image subplots
+      fought the shared figure width and padded a 24x24 image out to several times its
+      own size — fixed with explicit per-panel axis ranges instead.
+- [x] Docs chapter (`08-domain-applications.qmd`) covering all of the above end to end,
+      reviewed in a real browser tab. Caught and fixed a second real Pandoc footgun
+      along the way (after Phase 4's `^`-as-superscript one): a bare `*` used for
+      multiplication in a fig-cap (`y=2*exp(-0.5x)`) was parsed as markdown emphasis
+      syntax, italicizing an entire unrelated span of the caption — fixed by wrapping
+      the math in backticks.
 
-## Phase 8 — Cross-domain problem library and the solver arena
+## Phase 8 — Cross-domain problem library and the solver arena — **next up**
 
 Runs partly in parallel with the phases above, growing as each phase adds solvers that
 can be pitted against each other.

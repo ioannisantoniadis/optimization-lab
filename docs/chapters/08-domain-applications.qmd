@@ -1,0 +1,309 @@
+---
+title: "Domain Applications: Inverse Problems, Control, and Machine Learning"
+---
+
+Every phase so far has built and verified general-purpose machinery — solvers,
+statistical estimators, the tools for understanding a high-dimensional landscape. This
+chapter turns outward: three real domains, each posed as nothing more exotic than an
+`optimlab.core.Problem` (or, for a genuinely discrete decision problem, dynamic
+programming) and handed to solvers this repo has already built and tested. No new
+optimizer appears anywhere in this chapter — the point is exactly that none is needed.
+
+## Inverse problems
+
+### Image deblurring: recovering a sharp image from a blurred, noisy one
+
+An inverse problem asks for an unknown cause (a sharp image) from an indirect,
+corrupted effect (what a camera or sensor actually recorded). Blurring is linear — a
+convolution — so `observed = blur(true_image) + noise` is exactly Chapter 3's
+`Ax = b` shape, just with `A` now a smoothing operator built by construction rather
+than arbitrary data. That's what makes deblurring genuinely *ill-posed*, not merely
+noisy: `A` destroys high-frequency detail on purpose, so undoing it without
+regularization amplifies whatever noise happens to live in those same
+near-annihilated frequencies without bound.
+
+```{python}
+#| label: fig-deblurring
+#| fig-cap: "True image, the blurred+noisy observation, and the Tikhonov-regularized recovery, sharing one color scale. The recovery is visibly sharper than the blurred observation, though real ill-posedness shows in its texture -- Tikhonov (L2) regularization smooths noise but doesn't preserve crisp edges the way more specialized image priors would."
+import numpy as np
+from optimlab.inverse import blur_image, deblurring_problem
+from optimlab.optimizers import bfgs
+from optimlab.viz import deblurring_figure
+
+n = 24
+true_image = np.zeros((n, n))
+true_image[8:16, 8:16] = 1.0
+
+rng = np.random.default_rng(0)
+observed = blur_image(true_image, sigma=1.5) + 0.02 * rng.standard_normal((n, n))
+
+problem = deblurring_problem(observed, sigma=1.5, alpha=0.01)
+result = bfgs(problem, max_iter=500)
+recovered = result.x.reshape(n, n)
+
+print(f"observed MSE:  {np.mean((observed - true_image) ** 2):.5f}")
+print(f"recovered MSE: {np.mean((recovered - true_image) ** 2):.5f}")
+
+deblurring_figure(true_image, observed, recovered).show()
+```
+
+The regularization strength `alpha` isn't a free lunch — this is Chapter 3's
+bias-variance tradeoff again, made literal on an image instead of a coefficient vector:
+
+```{python}
+#| label: deblurring-alpha-sweep
+for alpha in [1e-4, 1e-3, 1e-2, 3e-1]:
+    r = bfgs(deblurring_problem(observed, sigma=1.5, alpha=alpha), max_iter=500)
+    mse = np.mean((r.x.reshape(n, n) - true_image) ** 2)
+    print(f"alpha={alpha:.4f}  recovered MSE={mse:.5f}")
+```
+
+Too little regularization (`alpha=1e-4`) amplifies noise past the blurry observation's
+*own* MSE — genuinely worse than doing nothing. Too much (`alpha=0.3`) over-smooths the
+recovery back toward blur. `alpha=0.01` sits at the sweet spot.
+
+### System identification: recovering a system's physical parameters
+
+A different inverse problem: not "what image produced this blur" but "what physical
+parameters produced this trajectory." Framed as nonlinear least squares
+(`optimlab.optimizers.gauss_newton`) — simulate the candidate system forward and
+minimize its residual against what was actually observed:
+
+```{python}
+#| label: fig-system-id
+#| fig-cap: "A damped oscillator's noisy position measurements (gray) against the trajectory simulated from Gauss-Newton's recovered (omega, zeta) -- the fitted curve runs through the middle of the scatter, exactly what a correct fit to noisy data should look like."
+from optimlab.inverse import oscillator_identification_problem, simulate_damped_oscillator
+from optimlab.optimizers import gauss_newton
+from optimlab.viz import system_id_figure
+
+true_omega, true_zeta = 2.5, 0.15
+x0 = np.array([1.0, 0.0])
+t = np.linspace(0, 10, 40)
+
+true_trajectory = np.asarray(simulate_damped_oscillator(true_omega, true_zeta, x0, t))
+observed_trajectory = true_trajectory + 0.02 * rng.standard_normal(true_trajectory.shape)
+
+sysid_problem = oscillator_identification_problem(t, observed_trajectory, x0, params0=np.array([1.0, 0.5]))
+sysid_result = gauss_newton(sysid_problem, max_iter=30)
+print(f"true params:      omega={true_omega:.4f}, zeta={true_zeta:.4f}")
+print(f"recovered params: omega={sysid_result.x[0]:.4f}, zeta={sysid_result.x[1]:.4f}")
+
+fitted = np.asarray(simulate_damped_oscillator(sysid_result.x[0], sysid_result.x[1], x0, t))
+system_id_figure(t, observed_trajectory, fitted).show()
+```
+
+The RK4 integrator simulating the oscillator is written entirely in `jax.numpy`, so
+autodiff flows straight through the simulation loop — Gauss-Newton's Jacobian (the
+trajectory's sensitivity to the unknown physical parameters) comes out of `jax.jacfwd`
+for free, no hand-derived sensitivity equation required.
+
+## Control
+
+### LQR: the one optimal-control problem with a closed form
+
+::: {.callout-note title="Idea — Linear Quadratic Regulator"}
+For linear dynamics `x_{k+1} = A x_k + B u_k` and quadratic cost, the optimal control
+is always exactly linear in the state: `u_k = -K_k x_k`, with `K_k` from a backward
+Riccati recursion [@kalman1960contributions] — no search required.
+:::
+
+```{python}
+#| label: fig-lqr
+#| fig-cap: "A double integrator (position + velocity, control = acceleration) driven to the origin by LQR's closed-form feedback law -- smooth deceleration in position, a control that changes sign once."
+from optimlab.control import simulate_lqr, solve_lqr
+from optimlab.viz import trajectory_and_control_figure
+
+dt = 0.1
+A = np.array([[1.0, dt], [0.0, 1.0]])
+B = np.array([[0.0], [dt]])
+Q = np.diag([1.0, 0.1])
+R = np.array([[0.1]])
+Q_f = np.diag([10.0, 10.0])
+n_steps = 30
+
+lqr_result = solve_lqr(A, B, Q, R, Q_f, n_steps)
+states, controls = simulate_lqr(A, B, lqr_result.gains, x0=np.array([1.0, 0.0]))
+t_lqr = np.arange(n_steps + 1) * dt
+
+trajectory_and_control_figure(
+    t_lqr, states, controls, state_labels=["position", "velocity"], control_labels=["accel"],
+    title="LQR: double integrator",
+).show()
+```
+
+The closed form is worth cross-checking against the same iterative machinery this repo
+uses everywhere else — the identical finite-horizon problem, posed instead as an
+ordinary `Problem` over the entire flattened control sequence and solved by `bfgs`:
+
+```{python}
+#| label: lqr-cross-check
+import jax.numpy as jnp
+from optimlab.core import Problem
+
+riccati_cost = sum(
+    states[k] @ Q @ states[k] + controls[k] @ R @ controls[k] for k in range(n_steps)
+) + states[-1] @ Q_f @ states[-1]
+
+n_u = B.shape[1]
+A_j, B_j, Q_j, R_j, Qf_j = (jnp.asarray(m) for m in (A, B, Q, R, Q_f))
+x0_j = jnp.asarray(states[0])
+
+def rollout_cost(flat_u):
+    u_seq = flat_u.reshape(n_steps, n_u)
+    x = x0_j
+    cost = 0.0
+    for k in range(n_steps):
+        u = u_seq[k]
+        cost = cost + x @ Q_j @ x + u @ R_j @ u
+        x = A_j @ x + B_j @ u
+    return cost + x @ Qf_j @ x
+
+direct_result = bfgs(Problem(f=rollout_cost, x0=np.zeros(n_steps * n_u)), max_iter=500)
+print(f"Riccati cost:      {riccati_cost:.6f}")
+print(f"direct-opt cost:   {direct_result.f:.6f}")
+print(f"max |control diff|: {np.max(np.abs(direct_result.x - controls.ravel())):.2e}")
+```
+
+Two completely different routes to the same answer, agreeing to `1e-6` on the
+controls themselves — exactly the strength of evidence this repo's cross-checks have
+relied on throughout.
+
+### Nonlinear optimal control via direct shooting: swinging a pendulum upright
+
+LQR's closed form needs linear dynamics. A pendulum's `sin(theta)` term isn't linear —
+but nothing about that stops direct shooting: parameterize the *entire control
+sequence* as the optimization variable, simulate the nonlinear dynamics forward, and
+minimize control effort plus a penalty for missing the target. Still nothing but an
+ordinary `Problem`.
+
+```{python}
+#| label: fig-swingup
+#| fig-cap: "Swinging a pendulum from hanging straight down (theta=0) to upright at rest (theta=pi) using nothing but bfgs on the control sequence. The controller pumps backward first (theta briefly negative) to build angular velocity before driving all the way around, then applies reverse torque at the end to arrive at rest rather than overshoot."
+from optimlab.control import simulate_pendulum, swingup_problem
+
+x0_pendulum = np.array([0.0, 0.0])
+x_target = np.array([np.pi, 0.0])
+n_steps_p, dt_p = 20, 0.1
+
+swing_problem = swingup_problem(x0_pendulum, x_target, n_steps_p, dt_p, control_penalty=0.01, terminal_weight=200.0)
+swing_result = bfgs(swing_problem, max_iter=100)
+trajectory = np.asarray(simulate_pendulum(x0_pendulum, swing_result.x, dt_p))
+print(f"final (theta, theta_dot): {trajectory[-1]}  target: {x_target}")
+
+t_pendulum = np.arange(n_steps_p + 1) * dt_p
+trajectory_and_control_figure(
+    t_pendulum, trajectory, swing_result.x.reshape(-1, 1),
+    state_labels=["theta", "theta_dot"], control_labels=["torque"], title="Pendulum swing-up",
+).show()
+```
+
+Landing within a fraction of a degree of straight-up, at rest, from nothing but
+`bfgs` differentiating through an RK4-integrated nonlinear simulation — no
+linearization, no problem-specific solver.
+
+### Dynamic programming: a genuinely different kind of algorithm
+
+::: {.callout-important title="Not continuous optimization"}
+Every solver used above takes a step, evaluates a gradient, repeats. Value iteration
+is a different *kind* of algorithm: an exact fixed-point iteration over a discrete
+state space [@bellman1957dynamic], with no step size or gradient anywhere.
+:::
+
+```{python}
+#| label: fig-gridworld
+#| fig-cap: "A 5x5 grid world's converged value function (color) and greedy policy (arrows) -- value climbs toward the goal (star) and every arrow points along a shortest path around the obstacles (white gaps). The goal cell itself shows value 0, not the highest value in the grid: the +10 reward is earned on arriving at the goal, not for occupying it, so once there, no further reward is left to collect -- a real feature of this reward design, not a bug in the display."
+from optimlab.control import GridWorld, value_iteration
+from optimlab.viz import gridworld_figure
+
+world = GridWorld(n_rows=5, n_cols=5, goal=(4, 4), obstacles={(2, 2), (2, 3), (1, 3)})
+V, policy, n_iter = value_iteration(world)
+print(f"converged in {n_iter} sweeps")
+
+gridworld_figure(world, V, policy).show()
+```
+
+```{python}
+#| label: gridworld-rollout
+state = (0, 0)
+path = [state]
+for _ in range(20):
+    if state == world.goal:
+        break
+    state, _reward = world.step(state, policy[state])
+    path.append(state)
+print("greedy rollout from (0, 0):", path)
+```
+
+## Machine learning
+
+### Backpropagation from scratch
+
+`optimlab.core.Problem`'s own docstring says a closed-form gradient is "worth doing by
+hand at least once, for the pedagogy" — everywhere else in this repo, JAX autodiff has
+done that job. Here, the chain rule is implemented directly: a forward pass caching
+every layer's pre-activation and activation, then a backward pass applying the
+derivative of `tanh` (hidden layers) or the identity (the linear output layer) at each
+step [@rumelhart1986learning].
+
+```{python}
+#| label: backprop-cross-check
+from optimlab.highdim import MLPShape, init_params, mlp_training_problem
+from optimlab.ml import manual_mlp_gradient
+
+X_bp = rng.uniform(-2, 2, size=(30, 3))
+y_bp = rng.uniform(-1, 1, size=(30, 2))
+shape_bp = MLPShape(layer_sizes=[3, 8, 5, 2])
+params_bp = init_params(shape_bp, seed=0)
+
+problem_bp = mlp_training_problem(shape_bp, X_bp, y_bp, seed=0)
+autodiff_grad = problem_bp.grad(params_bp)
+manual_grad = manual_mlp_gradient(params_bp, shape_bp, X_bp, y_bp)
+
+print(f"max abs difference (manual vs. autodiff): {np.max(np.abs(autodiff_grad - manual_grad)):.2e}")
+```
+
+Two completely independent derivations of the same gradient — one symbolic-by-hand,
+one automatic — agree to machine precision. Not a coincidence: they're computing the
+identical quantity, just one line of derivation apart.
+
+### Physics-informed neural networks
+
+A PINN is trained to satisfy a differential equation directly: the loss is the
+equation's own residual at a set of sample points, plus the initial condition — never a
+table of precomputed solution values to imitate. Computing that residual needs a
+derivative of the network's *output* with respect to its *input* (not its parameters),
+which is the same `jax.grad` machinery used everywhere else in this repo, just
+differentiating through a different argument [@raissi2019physics].
+
+```{python}
+#| label: fig-pinn
+#| fig-cap: "A network trained purely from `dy/dx = -0.5y` and `y(0)=2` -- the analytic solution `y = 2 exp(-0.5x)` never appears anywhere in its loss -- landing on top of that exact curve after training."
+from optimlab.highdim import MLPShape as PinnShape
+from optimlab.ml import ode_pinn_problem, predict
+from optimlab.viz import pinn_solution_figure
+
+decay_rate, y0 = 0.5, 2.0
+pinn_shape = PinnShape(layer_sizes=[1, 20, 20, 1])
+pinn_problem = ode_pinn_problem(decay_rate, y0, (0.0, 5.0), pinn_shape, n_collocation=50, seed=0)
+pinn_result = bfgs(pinn_problem, max_iter=1000)
+
+xs_test = np.linspace(0, 5, 40)
+predicted = np.asarray(predict(pinn_result.x, pinn_shape, xs_test))
+true_solution = y0 * np.exp(-decay_rate * xs_test)
+print(f"max abs error vs. analytic solution: {np.max(np.abs(predicted - true_solution)):.5f}")
+
+pinn_solution_figure(xs_test, predicted, true_solution).show()
+```
+
+The network was never shown a single `(x, y)` pair from the true solution — it matches
+that solution to within `0.0002` purely from being told what equation it must satisfy.
+
+## What's next
+
+This chapter closes the loop the whole repo has been building toward: a real image, a
+real physical system, a real control task, a real differential equation, all solved by
+solvers built and verified from Chapter 1 onward. What remains (ROADMAP Phase 8) is
+breadth rather than new machinery — a standardized solver-arena report for pitting
+every applicable solver against a new problem at a glance, and one worked, visualized
+problem per additional domain (economics, sociology/networks) this repo hasn't touched
+yet.

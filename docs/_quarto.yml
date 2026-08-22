@@ -24,6 +24,7 @@ book:
     - chapters/05-constraints-and-duality.qmd
     - chapters/06-bayesian-modeling-and-estimation.qmd
     - chapters/07-high-dimensional-non-convexity.qmd
+    - chapters/08-domain-applications.qmd
   navbar:
     background: light
 
