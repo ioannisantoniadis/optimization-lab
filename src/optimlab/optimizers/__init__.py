@@ -1,6 +1,7 @@
 from optimlab.optimizers.adaptive import adagrad, adam, rmsprop
 from optimlab.optimizers.admm import ADMMProblem, admm
 from optimlab.optimizers.barrier_method import ConstrainedProblem, barrier_method
+from optimlab.optimizers.bayesian_optimization import bayesian_optimize
 from optimlab.optimizers.conjugate_gradient import conjugate_gradient
 from optimlab.optimizers.gauss_newton import NonlinearLeastSquaresProblem, gauss_newton
 from optimlab.optimizers.genetic_algorithm import genetic_algorithm
@@ -29,7 +30,8 @@ from optimlab.optimizers.simulated_annealing import simulated_annealing
 #: the exact same non-convex landscape. `genetic_algorithm`/`particle_swarm` need a
 #: search region (`bounds`, defaulting to `problem.domain`) rather than just a starting
 #: point, but that default makes them callable the same uniform way for any
-#: `optimlab.landscapes` benchmark. Not here, each for its own reason tied to a
+#: `optimlab.landscapes` benchmark; `bayesian_optimize` (Phase 8) follows the identical
+#: convention. Not here, each for its own reason tied to a
 #: differently-shaped problem (see each module's docstring): `simplex` (LinearProgram),
 #: `conjugate_gradient` (a plain (A, b) linear system), `gauss_newton`
 #: (NonlinearLeastSquaresProblem, residuals + Jacobian), `proximal_gradient`
@@ -49,6 +51,7 @@ ALL_SOLVERS = {
     "simulated_annealing": simulated_annealing,
     "genetic_algorithm": genetic_algorithm,
     "particle_swarm": particle_swarm,
+    "bayesian_optimize": bayesian_optimize,
 }
 
 __all__ = [
@@ -64,6 +67,7 @@ __all__ = [
     "admm",
     "backtracking_armijo",
     "barrier_method",
+    "bayesian_optimize",
     "bfgs",
     "conjugate_gradient",
     "dual",

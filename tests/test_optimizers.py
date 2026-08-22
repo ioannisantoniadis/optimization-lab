@@ -67,6 +67,7 @@ def test_all_solvers_registry_matches_importable_functions():
         "gradient_descent", "heavy_ball", "nesterov", "adagrad",
         "rmsprop", "adam", "newton", "bfgs", "lbfgs",
         "nelder_mead", "simulated_annealing", "genetic_algorithm", "particle_swarm",
+        "bayesian_optimize",
     }
 
 
