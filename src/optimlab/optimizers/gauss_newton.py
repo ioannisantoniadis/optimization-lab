@@ -28,17 +28,26 @@ class NonlinearLeastSquaresProblem:
     """Minimize `0.5 * ||residual(x)||^2` over `x`. Leave `jacobian=None` to get it via
     JAX automatic differentiation (`jax.jacfwd`), exactly as `optimlab.core.Problem`
     derives gradients — `residual` should then be written with `jax.numpy` ops.
+
+    `jit_residual` (opt-in, default `False`) compiles `residual` itself with `jax.jit`,
+    mirroring `optimlab.core.Problem`'s `jit_f` — worth setting when `residual`
+    simulates something expensive per call (e.g. integrating an ODE) and line search
+    ends up calling it several times per outer iteration.
     """
 
     residual: ResidualFn
     x0: ArrayLike
     jacobian: JacobianFn | None = None
+    jit_residual: bool = False
     name: str = "nonlinear_least_squares"
 
     def __post_init__(self) -> None:
         self.x0 = np.asarray(self.x0, dtype=float)
+        raw_residual = self.residual
         if self.jacobian is None:
-            self.jacobian = _autojacobian(self.residual)
+            self.jacobian = _autojacobian(raw_residual)
+        if self.jit_residual:
+            self.residual = _autoresidual(raw_residual)
 
     @property
     def n_dim(self) -> int:
@@ -62,6 +71,25 @@ def _autojacobian(residual: ResidualFn) -> JacobianFn:
         return jacobian
     except ImportError:
         return lambda x: _finite_diff_jacobian(residual, x)
+
+
+def _autoresidual(residual: ResidualFn) -> ResidualFn:
+    """Wrap `residual` in `jax.jit`, opt-in via `jit_residual=True`. Kept separate from
+    `_autojacobian` (which always traces the *unwrapped* `residual`) for the same
+    reason `optimlab.core._autof` is kept separate from `_autograd`/`_autohess`.
+    """
+    try:
+        import jax
+        import jax.numpy as jnp
+
+        jit_r = jax.jit(lambda x: residual(x))
+
+        def wrapped(x: ArrayLike) -> ArrayLike:
+            return np.asarray(jit_r(jnp.asarray(x, dtype=jnp.float64)))
+
+        return wrapped
+    except ImportError:
+        return residual
 
 
 def _finite_diff_jacobian(residual: ResidualFn, x: ArrayLike, eps: float = 1e-6) -> ArrayLike:

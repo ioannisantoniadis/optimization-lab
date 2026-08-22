@@ -68,4 +68,4 @@ def swingup_problem(
         terminal_cost = terminal_weight * jnp.sum((trajectory[-1] - x_target_j) ** 2)
         return control_cost + terminal_cost
 
-    return Problem(f=cost, x0=np.zeros(n_steps), name="pendulum_swingup")
+    return Problem(f=cost, x0=np.zeros(n_steps), jit_f=True, name="pendulum_swingup")

@@ -54,6 +54,14 @@ class Problem:
     x0: default starting point.
     grad, hess: closed-form gradient/Hessian, if you have (or want to derive) them.
         Left as ``None`` to fall back to JAX autodiff / finite differences.
+    jit_f: compile `f` itself with `jax.jit` (opt-in, default `False`). `grad`/`hess`
+        are always JIT-compiled via JAX autodiff regardless of this flag — only the
+        raw objective value is affected. Worth setting when `f` does real per-call
+        work (e.g. simulating a trajectory) and gets called many times by line search;
+        for cheap objectives called only a few times, tracing/compilation overhead can
+        outweigh the win, which is why this isn't the default. Requires `f` to be
+        written entirely with `jax.numpy` ops (no plain Python `float()`/control flow
+        on traced values) — the same constraint autodiff already places on `f`.
     name: human-readable identifier used in reports and plot legends.
     minimum, f_min: known global minimizer / minimum value, for benchmark problems
         where the answer is known — lets tests and plots mark "how close did we get."
@@ -65,6 +73,7 @@ class Problem:
     x0: ArrayLike
     grad: GradFn | None = None
     hess: HessFn | None = None
+    jit_f: bool = False
     name: str = "problem"
     minimum: ArrayLike | None = None
     f_min: float | None = None
@@ -73,10 +82,13 @@ class Problem:
 
     def __post_init__(self) -> None:
         self.x0 = np.asarray(self.x0, dtype=float)
+        raw_f = self.f
         if self.grad is None:
-            self.grad = _autograd(self.f)
+            self.grad = _autograd(raw_f)
         if self.hess is None:
-            self.hess = _autohess(self.f)
+            self.hess = _autohess(raw_f)
+        if self.jit_f:
+            self.f = _autof(raw_f)
 
     @property
     def n_dim(self) -> int:
@@ -111,6 +123,27 @@ def _autohess(f: Objective) -> HessFn:
         return hess
     except ImportError:
         return lambda x: _finite_diff_hess(f, x)
+
+
+def _autof(f: Objective) -> Objective:
+    """Wrap `f` in `jax.jit`, opt-in via `Problem(..., jit_f=True)`. Kept separate from
+    `_autograd`/`_autohess` (which always run against the *unwrapped* `f`) because a
+    jitted function forces its output to a concrete Python `float` here — tracing
+    `jax.grad`/`jax.hessian` through that concrete cast is exactly the
+    `ConcretizationTypeError` this ordering avoids.
+    """
+    try:
+        import jax
+        import jax.numpy as jnp
+
+        jax_f = jax.jit(lambda x: f(x))
+
+        def wrapped(x: ArrayLike) -> float:
+            return float(jax_f(jnp.asarray(x, dtype=jnp.float64)))
+
+        return wrapped
+    except ImportError:
+        return f
 
 
 def _finite_diff_grad(f: Objective, x: ArrayLike, eps: float = 1e-6) -> ArrayLike:

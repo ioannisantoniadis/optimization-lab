@@ -59,4 +59,6 @@ def oscillator_identification_problem(
         simulated = simulate_damped_oscillator(omega, zeta, x0, t)
         return simulated - observed_j
 
-    return NonlinearLeastSquaresProblem(residual=residual, x0=params0, name="oscillator_identification")
+    return NonlinearLeastSquaresProblem(
+        residual=residual, x0=params0, jit_residual=True, name="oscillator_identification"
+    )
