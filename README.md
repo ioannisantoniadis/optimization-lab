@@ -66,15 +66,32 @@ tests/            Correctness/convergence tests for every solver
 [marimo](https://marimo.io) is a reactive Python notebook: cells re-run automatically
 when their inputs change, and it has built-in UI widgets (sliders, dropdowns) that
 trigger that re-run live in the browser. It's how this repo does hands-on
-experimentation, as opposed to a static plot.
+experimentation, as opposed to a static plot — the docs site's figures are executed
+once at render time; these notebooks stay live in your own browser.
 
 ```bash
 uv run marimo edit notebooks/marimo/gradient_descent_explorer.py
 ```
 
-Opens in your browser. Pick a landscape and one or more solvers, drag the
-learning-rate / momentum / iteration-count sliders, and the trajectory and
-convergence plots redraw live.
+One entry point per phase, each picking that phase's most slider-worthy idea:
+
+- **`gradient_descent_explorer.py`** (Phase 1) — pick a landscape and one or more
+  solvers, drag the learning-rate / momentum / iteration-count sliders, watch the
+  trajectory and convergence plots redraw live.
+- **`lp_polytope_explorer.py`** (Phase 2) — drag a 2D LP's constraint bounds and
+  objective weights; the feasible polytope and simplex's vertex path redraw live.
+- **`regularization_path_explorer.py`** (Phase 3) — drag `alpha` and watch LASSO's
+  coefficients hit exact zero while ridge's only approach it, on the same data.
+- **`central_path_explorer.py`** (Phase 4) — drag two box-constraint bounds and watch
+  the barrier method's central path curve toward the new constrained corner.
+- **`bayesian_posterior_explorer.py`** (Phase 5) — drag trial/success counts and watch
+  the true posterior, Laplace's Gaussian approximation, and an MCMC chain's samples
+  agree or diverge.
+- **`loss_landscape_explorer.py`** (Phase 6) — a trained network's filter-normalized
+  loss-landscape slice and Hessian eigenspectrum, redrawn as you drag span, random
+  direction, and Lanczos iteration count.
+- **`control_explorer.py`** (Phase 7) — drag LQR's cost weights and initial state;
+  the closed-form Riccati solve is instant, so every drag re-solves live.
 
 ## Building the docs site
 
