@@ -1,3 +1,4 @@
+from optimlab.viz.arena import arena_figure
 from optimlab.viz.compare import (
     add_trajectory,
     add_trajectory_3d,
@@ -32,6 +33,7 @@ from optimlab.viz.regression import (
 __all__ = [
     "add_trajectory",
     "add_trajectory_3d",
+    "arena_figure",
     "central_path_figure",
     "contour_figure",
     "convergence_figure",
