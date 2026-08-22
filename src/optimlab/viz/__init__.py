@@ -9,6 +9,7 @@ from optimlab.viz.compare import (
 )
 from optimlab.viz.constrained import central_path_figure, duality_gap_figure, kkt_geometry_figure
 from optimlab.viz.control import gridworld_figure, trajectory_and_control_figure
+from optimlab.viz.economics import efficient_frontier_figure
 from optimlab.viz.highdim import (
     cosine_similarity_figure,
     curve_comparison_figure,
@@ -29,6 +30,7 @@ from optimlab.viz.regression import (
     ridge_path_figure,
     svd_conditioning_figure,
 )
+from optimlab.viz.sociology import fair_allocation_figure
 
 __all__ = [
     "add_trajectory",
@@ -41,6 +43,8 @@ __all__ = [
     "curve_comparison_figure",
     "deblurring_figure",
     "duality_gap_figure",
+    "efficient_frontier_figure",
+    "fair_allocation_figure",
     "gmm_figure",
     "gridworld_figure",
     "hessian_spectrum_figure",
