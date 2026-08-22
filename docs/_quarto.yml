@@ -25,6 +25,7 @@ book:
     - chapters/06-bayesian-modeling-and-estimation.qmd
     - chapters/07-high-dimensional-non-convexity.qmd
     - chapters/08-domain-applications.qmd
+    - chapters/09-cross-domain-problems-and-the-solver-arena.qmd
   navbar:
     background: light
 

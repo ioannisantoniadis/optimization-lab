@@ -27,12 +27,15 @@ including the scipy-based oracles, works without it.
 ```
 src/optimlab/
   core.py         Problem / OptimizeResult / Solver — the interface everything else uses
+  arena.py        run_arena: register a Problem, get a standardized report (objective,
+                  iterations, wall time, converged) across every solver in ALL_SOLVERS
   optimizers/     From-scratch solvers: gradient descent, momentum, Adam family, Newton,
                   BFGS/L-BFGS, line search, simplex (LP) + its Lagrangian dual, conjugate
                   gradient, Gauss-Newton (nonlinear least squares), projected/proximal
                   gradient (box constraints, LASSO), Nelder-Mead, simulated annealing,
-                  genetic algorithm, particle swarm (all four gradient-free methods share
-                  ALL_SOLVERS with the rest), barrier (interior point) method, ADMM
+                  genetic algorithm, particle swarm, Bayesian optimization (Gaussian
+                  process + Expected Improvement) — all five gradient-free methods share
+                  ALL_SOLVERS with the rest — barrier (interior point) method, ADMM
   linalg/         SVD / condition number, least squares (+ minimum-norm, rank-deficient),
                   ridge regression, equality-constrained least squares / QP
   landscapes/     Benchmark test functions (sphere, Rosenbrock, Rastrigin, ...) with
@@ -52,10 +55,14 @@ src/optimlab/
                   regions, regression fit/residuals, SVD conditioning, ridge/LASSO paths,
                   central path / KKT geometry / duality gap, posterior/MCMC/GMM figures,
                   saddle-point / Hessian-spectrum / loss-landscape / NTK figures,
-                  deblurring / system-ID / control / grid-world / PINN figures
+                  deblurring / system-ID / control / grid-world / PINN figures,
+                  solver-arena / efficient-frontier / fair-allocation figures
   backends/       Correctness-oracle adapters: scipy (core dep), cvxpy and optuna (need
                   the `backends` extra) for LP, least squares, QP, and black-box search
-  problems/       Cross-domain problems (physics, economics, ML, ...) — not yet populated
+  problems/       Cross-domain problems: economics (Markowitz portfolio optimization /
+                  efficient frontier), sociology/networks (fair resource allocation via
+                  proportional fairness) — physics and ML live in optimizers/control
+                  instead (Chapter 7's pendulum swing-up, Bayesian optimization)
 docs/             Quarto site: theory + write-ups, with figures executed from real code
 notebooks/marimo/ Interactive apps (see below)
 tests/            Correctness/convergence tests for every solver

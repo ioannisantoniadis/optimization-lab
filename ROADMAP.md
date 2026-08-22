@@ -425,29 +425,51 @@ descent works on it anyway.
       syntax, italicizing an entire unrelated span of the caption — fixed by wrapping
       the math in backticks.
 
-## Phase 8 — Cross-domain problem library and the solver arena — **next up**
+## Phase 8 — Cross-domain problem library and the solver arena — **done**
 
-Runs partly in parallel with the phases above, growing as each phase adds solvers that
-can be pitted against each other.
+The final phase — deliberately no new algorithms, just the payoff of every solver
+since Phase 1 sharing the identical `Problem -> OptimizeResult` interface.
 
-- **Solver arena**: register a `Problem`, get a standardized report (convergence plot,
-  iterations, wall time, success rate) across every applicable from-scratch and backend
-  solver — the mechanism for "port a new problem in, get solvers for free."
-- **Domain problems**: one worked, visualized problem per domain — physics (e.g. optimal
-  control of a pendulum swing-up), economics (portfolio optimization / market
-  equilibrium), sociology/networks (opinion dynamics equilibrium, fair resource
-  allocation), machine learning (hyperparameter search via the Optuna backend vs.
-  from-scratch Bayesian optimization).
-- **Life as optimization** (flagship case study — expand the first pass already in
-  `docs/chapters/04-nonsmooth-and-global-optimization.qmd`, a small weekly-hours
-  allocation toy problem solved with `genetic_algorithm`/`simulated_annealing`, into
-  something closer to a real worked example): make the parameterization and
-  independence/stationarity assumptions explicit, frame it as genuinely multi-objective
-  (the Phase 3 version collapses "wellbeing" into one scalar utility — an assumption
-  worth relaxing here), and stay honest about where the model breaks down. The point
-  isn't a "solved" life — it's making the modeling assumptions of applying optimization
-  outside of textbook settings legible, which the Phase 3 pass already showed concretely
-  (two solvers disagreeing on the same toy problem, not papered over).
+- [x] `optimlab.arena.run_arena`: register a `Problem`, get a standardized report
+      (final objective, iterations, wall time, converged flag) across every solver in
+      `ALL_SOLVERS`. Catches each solver's own exceptions rather than letting one
+      inapplicable solver stop the rest — verified on a `Problem` with no domain set:
+      the three solvers needing `bounds` (`genetic_algorithm`, `particle_swarm`,
+      `bayesian_optimize`) fail with a clear message while the other 11 succeed
+      normally. `arena_figure` draws the result as one bar per solver, colored by
+      outcome.
+- [x] **Domain problems** — physics already had its worked example (Chapter 7's
+      pendulum swing-up), not duplicated:
+    - *Economics*: `optimlab.problems.economics`, Markowitz portfolio optimization —
+      an equality-constrained QP solved by Chapter 1's `equality_constrained_qp`.
+      Cross-checked against `cvxpy_qp` to `1e-6`; the efficient frontier traces the
+      classic Markowitz hyperbola (risk falls to a single global-minimum-variance
+      point, then rises on either side).
+    - *Sociology/networks*: `optimlab.problems.sociology`, fair resource allocation
+      via proportional fairness (Kelly 1997 / Network Utility Maximization), solved by
+      Chapter 4's `barrier_method`. Verified against the one closed-form case (n
+      identical users sharing one resource split exactly equally) and an asymmetric
+      case (a user contending for two constrained resources at once gets squeezed
+      relative to users contending for only one).
+    - *Machine learning*: `optimlab.optimizers.bayesian_optimization`, a from-scratch
+      Bayesian optimizer (closed-form Gaussian process regression + Expected
+      Improvement) — a genuinely new algorithm, maintaining a probabilistic surrogate
+      instead of following a gradient or evolving a population. Compared against the
+      Optuna backend on Himmelblau and Rastrigin; came out ahead on both at the
+      specific low-dimensional, small-budget comparison run (not claimed as a general
+      result — Optuna's TPE sampler targets much higher-dimensional search spaces
+      where a GP's `O(n^3)` cost per fit becomes the bottleneck).
+- [x] **Life as optimization, revisited**: Chapter 4's single-weighted-sum version
+      reframed as genuinely multi-objective — two aggregate objectives ("obligations":
+      sleep+work, "fulfillment": exercise+social), a weighted-sum sweep over their
+      trade-off (reusing `genetic_algorithm`, no new solver), and the non-dominated
+      points identified directly rather than asserted. Independence, stationarity, and
+      the four-to-two grouping simplification stated explicitly as modeling
+      assumptions, plus the weighted-sum method's own blind spot (it can only trace
+      the convex part of a Pareto front) — the actual output is the shape of a
+      real trade-off, not a single "solved" answer.
+- [x] Docs chapter (`09-cross-domain-problems-and-the-solver-arena.qmd`) covering all
+      of the above end to end, reviewed in a real browser tab.
 
 ## Non-goals
 

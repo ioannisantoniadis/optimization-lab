@@ -1,0 +1,255 @@
+---
+title: "Cross-Domain Problems and the Solver Arena: The Whole Repo, at Once"
+---
+
+This is the last phase this book's roadmap plans for, and it's deliberately not about
+new algorithms — every solver used below already existed before this chapter. It's
+about the payoff of everything sharing the same `Problem -> OptimizeResult` interface
+since Chapter 1: a standardized way to pit every solver against a new problem at a
+glance, one worked problem per domain this repo hadn't touched yet, and a genuine
+second look at the very first cross-domain example (Chapter 4's toy weekly-hours
+allocation), this time without collapsing "wellbeing" into a single number.
+
+## The solver arena
+
+::: {.callout-note title="Idea — Port a problem in, get solvers for free"}
+Every solver in `optimlab.optimizers.ALL_SOLVERS` speaks the identical
+`Problem -> OptimizeResult` interface. `optimlab.arena.run_arena` makes that payoff
+literal: register a `Problem`, get every applicable solver's result back as one
+standardized report.
+:::
+
+```{python}
+#| label: fig-arena
+#| fig-cap: "Every solver in ALL_SOLVERS against Himmelblau, sorted best-to-worst, log-scale. Gradient-based methods (Newton, BFGS, particle swarm) land near machine precision; population/annealing methods report 'max_iter reached' rather than a gradient-based convergence flag -- a different stopping rule, not a worse answer, and still within 1e-5 of the true minimum."
+import numpy as np
+from optimlab.arena import run_arena
+from optimlab.landscapes import get
+from optimlab.viz import arena_figure
+
+bf = get("himmelblau")
+problem = bf.problem(x0=np.array([-4.0, 4.0]))
+report = run_arena(problem)
+
+for row in sorted(report.summary_rows(), key=lambda r: (r["f"] is None, r["f"]))[:5]:
+    print(f"{row['name']:20s} f={row['f']:.3e}  n_iter={row['n_iter']:5d}  converged={row['converged']}")
+
+arena_figure(report).show()
+```
+
+A solver that genuinely doesn't apply — a population method needing `bounds` a
+`Problem` without `domain` set doesn't provide — fails loudly rather than silently:
+
+```{python}
+#| label: arena-failure-mode
+from optimlab.core import Problem
+
+no_domain_problem = Problem(f=lambda x: (x[0] - 1.0) ** 2 + (x[1] - 2.0) ** 2, x0=np.zeros(2), name="no_domain")
+report2 = run_arena(no_domain_problem)
+for row in report2.summary_rows():
+    if row["error"] is not None:
+        print(f"{row['name']:20s} FAILED: {row['error']}")
+```
+
+## Economics: the Markowitz efficient frontier
+
+Portfolio optimization [@markowitz1952portfolio] is, underneath the finance vocabulary, an equality-constrained
+QP Chapter 1 already solves in closed form: minimize a portfolio's variance
+`0.5 w^T Sigma w` subject to `sum(w) = 1` (fully invested) and a target expected
+return. Sweep the target return and the minimum achievable risk traces the
+**efficient frontier** — for a given amount of risk, this is the best return
+achievable, full stop.
+
+```{python}
+#| label: fig-efficient-frontier
+#| fig-cap: "The Markowitz efficient frontier for 5 synthetic assets. Risk falls to a single global-minimum-variance portfolio (star), then rises again on either side -- demanding either a much higher or a much lower return than that vertex both force more concentrated, less diversified weights."
+from optimlab.problems.economics import efficient_frontier, minimum_variance_portfolio
+from optimlab.viz import efficient_frontier_figure
+
+rng = np.random.default_rng(0)
+n_assets = 5
+A = rng.standard_normal((n_assets, n_assets))
+cov = A @ A.T / n_assets + 0.01 * np.eye(n_assets)
+expected_returns = rng.uniform(0.02, 0.15, size=n_assets)
+
+targets = np.linspace(0.03, 0.13, 21)
+frontier = efficient_frontier(cov, expected_returns, targets)
+print(f"lowest-risk portfolio: return={frontier.target_returns[np.argmin(frontier.risks)]:.4f}, "
+      f"risk={frontier.risks.min():.4f}")
+
+efficient_frontier_figure(frontier).show()
+```
+
+Short sales are allowed here (weights can be negative) — the simplest version of the
+model, kept a pure equality-constrained QP rather than needing Chapter 4's general
+inequality machinery a no-short-selling constraint (`w >= 0`) would require.
+
+## Sociology and networks: proportional fairness
+
+::: {.callout-note title="Idea — Proportional fairness"}
+Allocate a shared, capacity-limited resource to maximize `sum(log(x_i))` rather than
+raw throughput `sum(x_i)` [@kelly1997charging]. `log`'s steep slope near zero means
+starving any one user, even a little, costs the objective a lot — every user ends up
+with a strictly positive share, unlike maximizing throughput alone, which would starve
+whoever's constraints allow the least.
+:::
+
+```{python}
+#| label: fig-fair-allocation
+#| fig-cap: "Three users, two shared resources (0<->1 shared between users 0,1; resource 1 shared between users 1,2). User 1 contends for both resources at once and is squeezed to about half either edge user's share -- both resources land at exactly their capacity."
+from optimlab.problems.sociology import solve_fair_allocation
+from optimlab.viz import fair_allocation_figure
+
+A_net = np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]])
+capacities = np.array([10.0, 10.0])
+result = solve_fair_allocation(A_net, capacities)
+print(f"allocation: {result.x.round(3)}")
+print(f"resource usage: {(A_net @ result.x).round(3)}  (capacities: {capacities})")
+
+fair_allocation_figure(A_net, capacities, result.x).show()
+```
+
+Solved via Chapter 4's `barrier_method` — proportional fairness is a genuine
+inequality-constrained convex problem (`x > 0` implicit in `log`, plus each resource's
+capacity), not a new algorithm.
+
+## Machine learning: Bayesian optimization vs. Optuna
+
+Every black-box comparison so far (Chapter 4's simulated annealing/GA/particle swarm,
+Chapter 6's Optuna backend) assumed cheap objective evaluations. Real hyperparameter
+tuning usually isn't cheap — which is exactly the regime Bayesian optimization is built
+for: maintain a Gaussian process surrogate of the objective from every point evaluated
+so far, and pick the next point by maximizing Expected Improvement, extracting as much
+information as possible from a small evaluation budget rather than needing many cheap
+ones.
+
+```{python}
+#| label: bayesopt-vs-optuna
+from optimlab.optimizers import bayesian_optimize
+from optimlab.backends import optuna_minimize
+
+results = {}
+for name, problem_name in [("Himmelblau", "himmelblau"), ("Rastrigin", "rastrigin")]:
+    bf = get(problem_name)
+    x0 = np.array([-4.0, 4.0]) if problem_name == "himmelblau" else np.array([4.3, -3.7])
+    domain = (-5.0, 5.0) if problem_name == "himmelblau" else (-5.12, 5.12)
+    p = bf.problem(x0=x0)
+
+    bo_result = bayesian_optimize(p, bounds=domain, n_init=8, n_iter=30, length_scale=1.5, seed=0)
+    optuna_result = optuna_minimize(p, bounds=domain, n_trials=38, seed=0)
+    print(f"{name:12s}  bayesian_optimize f={bo_result.f:.4f}   optuna f={optuna_result.f:.4f}")
+```
+
+From-scratch Bayesian optimization comes out ahead on both benchmarks at this budget
+— not a universal claim (Optuna's TPE sampler is built for much higher-dimensional
+search spaces than these 2D toys, where a full Gaussian process's `O(n^3)` cost per
+fit becomes the bottleneck GP-based methods are actually known for), just an honest
+result on the specific low-dimensional comparison run here.
+
+## Life as optimization, revisited: what changes once "wellbeing" isn't one number
+
+Chapter 4's version of this example collapsed sleep, work, exercise, and social time
+into a single weighted-sum utility score and searched for the one allocation that
+maximized it. That collapse is itself a modeling assumption — a real trade-off between
+distinct goods, quietly resolved by picking fixed weights before optimization ever
+runs. Making the trade-off explicit instead means treating this as a genuinely
+multi-objective problem, with two honest simplifications stated up front:
+
+::: {.callout-important title="Assumptions made explicit"}
+- **Independence**: each category's satisfaction is modeled as depending only on its
+  own hours — no interaction effects (a bad night's sleep making exercise less
+  effective, say, isn't represented).
+- **Stationarity**: the same allocation is assumed to repeat identically every week,
+  with no time-varying needs.
+- **Grouping**: sleep and work are bundled into one "obligations" objective, exercise
+  and social time into one "fulfillment" objective — itself a further collapse (four
+  goods to two), chosen only to keep the trade-off visualizable in 2D.
+:::
+
+```{python}
+#| label: fig-life-pareto
+#| fig-cap: "Sweeping the weighted-sum trade-off between two objectives -- 'obligations' (sleep+work) and 'fulfillment' (exercise+social) -- traces an approximate Pareto frontier: no allocation in the shaded set can improve one objective without giving up the other. The one dominated point (a worse alpha that a better alpha's allocation beats on both axes at once) is marked separately -- a real consequence of each point coming from a stochastic heuristic search, not perfect optimization."
+from optimlab.optimizers import genetic_algorithm
+
+weights = np.array([1.4, 1.2, 1.0, 0.8])
+thresholds = np.array([49.0, 20.0, 3.0, 2.0])
+penalty = 5.0
+budget = 80.0
+
+def category_utility(hours, i):
+    h = max(hours, 1e-6)
+    return weights[i] * np.sqrt(h) - (penalty if hours < thresholds[i] else 0.0)
+
+def obligations_utility(hours):
+    return category_utility(hours[0], 0) + category_utility(hours[1], 1)
+
+def fulfillment_utility(hours):
+    return category_utility(hours[2], 2) + category_utility(hours[3], 3)
+
+def make_objective(alpha):
+    def objective(hours):
+        combined = alpha * obligations_utility(hours) + (1 - alpha) * fulfillment_utility(hours)
+        return -combined + 50.0 * abs(np.sum(hours) - budget)
+    return objective
+
+x0 = np.full(4, budget / 4)
+alphas = np.linspace(0.0, 1.0, 15)
+A_vals, B_vals = [], []
+for alpha in alphas:
+    result = genetic_algorithm(
+        Problem(f=make_objective(alpha), x0=x0.copy(), domain=(0.0, budget)),
+        population_size=150, max_generations=400, seed=1,
+    )
+    A_vals.append(obligations_utility(result.x))
+    B_vals.append(fulfillment_utility(result.x))
+A_vals, B_vals = np.array(A_vals), np.array(B_vals)
+
+dominated = np.array([
+    np.any((A_vals >= a) & (B_vals >= b) & ((A_vals > a) | (B_vals > b)))
+    for a, b in zip(A_vals, B_vals)
+])
+print(f"{dominated.sum()} of {len(alphas)} sweep points were dominated (excluded from the frontier)")
+
+import plotly.graph_objects as go
+from optimlab.viz.theme import contrasting_categorical, layout_template
+
+colors = contrasting_categorical()
+fig = go.Figure(
+    [
+        go.Scatter(x=A_vals[~dominated], y=B_vals[~dominated], mode="markers+lines", name="Pareto frontier",
+                    line={"color": colors[0], "width": 2}, marker={"size": 9, "color": colors[0]}),
+        go.Scatter(x=A_vals[dominated], y=B_vals[dominated], mode="markers", name="dominated",
+                    marker={"size": 10, "color": colors[1], "symbol": "x"}),
+    ]
+)
+fig.update_layout(**layout_template(title="Life allocation: obligations vs. fulfillment trade-off",
+                                     xaxis_title="obligations utility", yaxis_title="fulfillment utility"))
+fig.show()
+```
+
+No point on this frontier is "the" answer — every one of them is a legitimate,
+non-dominated trade-off, and picking among them requires a value judgment (how much
+fulfillment is one more unit of obligation-satisfaction worth) that optimization
+itself has no opinion on. That is the actual honest output of this model: not a
+solved life, but the shape of a real trade-off, with its own stated blind spots (this
+weighted-sum sweep can only ever trace the convex part of a Pareto front — a genuinely
+non-convex trade-off would have gaps this method can't see) made visible rather than
+resolved by a silently-chosen scalar.
+
+## Physics, revisited
+
+The physics domain problem this phase's roadmap called for — optimal control of a
+pendulum swing-up — already has its worked example: Chapter 7's
+`optimlab.control.trajectory_optimization`, driving a pendulum from hanging straight
+down to upright via direct shooting. Restated here only to note it, not duplicated.
+
+## Closing
+
+Every chapter in this book has been building toward the same small set of claims,
+demonstrated rather than asserted: a common interface lets any solver attack any
+problem sharing its shape; cross-checking two independent methods on the identical
+problem is stronger evidence than trusting either one; and being honest about a
+model's assumptions and failure modes is more useful than a falsely clean success
+story. The `optimlab.arena`, the marimo notebooks (`notebooks/marimo/`), and every
+`Problem` built across these nine chapters are there to keep exploring past this point
+— porting in a new problem of your own is the whole reason the interface exists.
