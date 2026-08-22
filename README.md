@@ -99,6 +99,9 @@ One entry point per phase, each picking that phase's most slider-worthy idea:
   direction, and Lanczos iteration count.
 - **`control_explorer.py`** (Phase 7) — drag LQR's cost weights and initial state;
   the closed-form Riccati solve is instant, so every drag re-solves live.
+- **`solver_arena_explorer.py`** (Phase 8) — pick a benchmark landscape and a starting
+  point; every solver in `ALL_SOLVERS` runs against it and the ranked bar chart
+  redraws live.
 
 ## Building the docs site
 
