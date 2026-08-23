@@ -7,13 +7,21 @@ do this once n_dim > ~3).
 
 from __future__ import annotations
 
-import jax
-import jax.numpy as jnp
 import numpy as np
 import plotly.graph_objects as go
 
 from optimlab.core import ArrayLike, Objective, Problem
 from optimlab.viz.theme import layout_template, sequential_blue
+
+try:
+    # Optional, exactly like optimlab.core: jax has no WebAssembly/Pyodide build, so a
+    # hard top-level import here would break `optimlab.viz` for every caller, including
+    # notebooks exported to run client-side that never touch a jax-dependent objective.
+    import jax
+    import jax.numpy as jnp
+except ImportError:
+    jax = None
+    jnp = None
 
 
 def _evaluate_grid(
@@ -29,12 +37,14 @@ def _evaluate_grid(
     ys = np.linspace(*y_range, resolution)
     X, Y = np.meshgrid(xs, ys)
     points = np.stack([X.ravel(), Y.ravel()], axis=1)
-    try:
-        batched_f = jax.vmap(lambda p: f(p))
-        Z = np.asarray(batched_f(jnp.asarray(points, dtype=jnp.float64))).reshape(X.shape)
-    except Exception:  # noqa: BLE001 - vmap/tracing can fail in many JAX-internal ways;
-        # any of them should fall back to the always-correct pointwise loop below.
-        Z = np.array([float(f(p)) for p in points]).reshape(X.shape)
+    if jax is not None:
+        try:
+            batched_f = jax.vmap(lambda p: f(p))
+            Z = np.asarray(batched_f(jnp.asarray(points, dtype=jnp.float64))).reshape(X.shape)
+            return X, Y, Z
+        except Exception:  # noqa: BLE001, S110 - vmap/tracing can fail in many JAX-internal
+            pass  # ways; any of them should fall back to the pointwise loop below.
+    Z = np.array([float(f(p)) for p in points]).reshape(X.shape)
     return X, Y, Z
 
 

@@ -6,13 +6,10 @@ genuinely different algorithm here, a discrete-state Bellman fixed-point iterati
 rather than continuous optimization at all).
 """
 
+import importlib
+
 from optimlab.control.dynamic_programming import ACTIONS, GridWorld, value_iteration
 from optimlab.control.lqr import LQRResult, simulate_lqr, solve_lqr
-from optimlab.control.trajectory_optimization import (
-    pendulum_dynamics,
-    simulate_pendulum,
-    swingup_problem,
-)
 
 __all__ = [
     "ACTIONS",
@@ -25,3 +22,22 @@ __all__ = [
     "swingup_problem",
     "value_iteration",
 ]
+
+#: `optimlab.control.trajectory_optimization` hard-imports jax at module level (jax has
+#: no WebAssembly/Pyodide build), so importing it eagerly here would break
+#: `optimlab.control` for every caller — including LQR/dynamic-programming-only callers
+#: like the WASM-exported marimo notebooks. Resolved lazily via PEP 562.
+_LAZY = {
+    "pendulum_dynamics": "optimlab.control.trajectory_optimization",
+    "simulate_pendulum": "optimlab.control.trajectory_optimization",
+    "swingup_problem": "optimlab.control.trajectory_optimization",
+}
+
+
+def __getattr__(name: str):
+    module_name = _LAZY.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(module_name), name)
+    globals()[name] = value
+    return value

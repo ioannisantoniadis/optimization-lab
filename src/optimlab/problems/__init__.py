@@ -10,12 +10,13 @@ from-scratch Bayesian optimizer) lives in `optimlab.optimizers.bayesian_optimiza
 for the same reason: it's an optimizer comparison, not a new problem shape.
 """
 
+import importlib
+
 from optimlab.problems.economics import (
     EfficientFrontier,
     efficient_frontier,
     minimum_variance_portfolio,
 )
-from optimlab.problems.sociology import proportional_fairness_problem, solve_fair_allocation
 
 __all__ = [
     "EfficientFrontier",
@@ -24,3 +25,21 @@ __all__ = [
     "proportional_fairness_problem",
     "solve_fair_allocation",
 ]
+
+#: `optimlab.problems.sociology` hard-imports jax at module level (jax has no
+#: WebAssembly/Pyodide build), so importing it eagerly here would break
+#: `optimlab.problems` for every caller — including economics-only callers like the
+#: WASM-exported marimo notebooks. Resolved lazily via PEP 562.
+_LAZY = {
+    "proportional_fairness_problem": "optimlab.problems.sociology",
+    "solve_fair_allocation": "optimlab.problems.sociology",
+}
+
+
+def __getattr__(name: str):
+    module_name = _LAZY.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(module_name), name)
+    globals()[name] = value
+    return value
