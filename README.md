@@ -6,8 +6,6 @@ From-scratch implementations of core optimization algorithms, plus tooling for
 comparing solvers, visualizing landscapes, and applying them to problems across
 domains (physics, economics, machine learning).
 
-![A 2D Rastrigin function rendered as a 3D surface — the "many local minima" landscape gradient-based solvers have to deal with](docs/images/rastrigin-landscape-hero.png)
-
 - Docs site: **[ioannisantoniadis.github.io/optimization-lab](https://ioannisantoniadis.github.io/optimization-lab/)**
 - Roadmap / current status: [`ROADMAP.md`](ROADMAP.md)
 
