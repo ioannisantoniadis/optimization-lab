@@ -1,5 +1,7 @@
 # optimization-lab
 
+![optimization-lab — the nine docs chapters, from foundations to the cross-domain solver arena](docs/images/social-preview.png)
+
 From-scratch implementations of core optimization algorithms, plus tooling for
 comparing solvers, visualizing landscapes, and applying them to problems across
 domains (physics, economics, machine learning).
