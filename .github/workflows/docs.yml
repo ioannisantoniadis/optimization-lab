@@ -32,7 +32,7 @@ jobs:
           enable-cache: true
 
       - name: Install Python dependencies
-        run: uv sync --extra viz --extra docs
+        run: uv sync --extra viz --extra docs --extra backends
 
       - name: Register the project venv as a Jupyter kernel
         run: >

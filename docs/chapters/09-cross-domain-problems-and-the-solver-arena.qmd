@@ -21,7 +21,7 @@ standardized report.
 
 ```{python}
 #| label: fig-arena
-#| fig-cap: "Every solver in ALL_SOLVERS against Himmelblau, sorted best-to-worst, log-scale. Gradient-based methods (Newton, BFGS, particle swarm) land near machine precision; population/annealing methods report 'max_iter reached' rather than a gradient-based convergence flag -- a different stopping rule, not a worse answer, and still within 1e-5 of the true minimum."
+#| fig-cap: "Every solver in ALL_SOLVERS against Himmelblau, sorted best-to-worst, log-scale. Gradient-based methods (Newton, BFGS, L-BFGS) land near machine precision; particle swarm, a population method, actually lands ahead of all of them yet reports 'max_iter reached' rather than a gradient-based convergence flag -- a different stopping rule, not a worse answer, and still within 1e-5 of the true minimum."
 import numpy as np
 from optimlab.arena import run_arena
 from optimlab.landscapes import get
@@ -54,7 +54,7 @@ for row in report2.summary_rows():
 ## Economics: the Markowitz efficient frontier
 
 Portfolio optimization [@markowitz1952portfolio] is, underneath the finance vocabulary, an equality-constrained
-QP Chapter 1 already solves in closed form: minimize a portfolio's variance
+QP Chapter 3 already solves in closed form: minimize a portfolio's variance
 `0.5 w^T Sigma w` subject to `sum(w) = 1` (fully invested) and a target expected
 return. Sweep the target return and the minimum achievable risk traces the
 **efficient frontier** — for a given amount of risk, this is the best return
@@ -81,7 +81,7 @@ efficient_frontier_figure(frontier).show()
 ```
 
 Short sales are allowed here (weights can be negative) — the simplest version of the
-model, kept a pure equality-constrained QP rather than needing Chapter 4's general
+model, kept a pure equality-constrained QP rather than needing Chapter 5's general
 inequality machinery a no-short-selling constraint (`w >= 0`) would require.
 
 ## Sociology and networks: proportional fairness
@@ -96,7 +96,7 @@ whoever's constraints allow the least.
 
 ```{python}
 #| label: fig-fair-allocation
-#| fig-cap: "Three users, two shared resources (0<->1 shared between users 0,1; resource 1 shared between users 1,2). User 1 contends for both resources at once and is squeezed to about half either edge user's share -- both resources land at exactly their capacity."
+#| fig-cap: "Three users, two shared resources (resource 0 shared between users 0,1; resource 1 shared between users 1,2). User 1 contends for both resources at once and is squeezed to about half either edge user's share -- both resources land at exactly their capacity."
 from optimlab.problems.sociology import solve_fair_allocation
 from optimlab.viz import fair_allocation_figure
 
@@ -109,7 +109,7 @@ print(f"resource usage: {(A_net @ result.x).round(3)}  (capacities: {capacities}
 fair_allocation_figure(A_net, capacities, result.x).show()
 ```
 
-Solved via Chapter 4's `barrier_method` — proportional fairness is a genuine
+Solved via Chapter 5's `barrier_method` — proportional fairness is a genuine
 inequality-constrained convex problem (`x > 0` implicit in `log`, plus each resource's
 capacity), not a new algorithm.
 
@@ -142,9 +142,11 @@ for name, problem_name in [("Himmelblau", "himmelblau"), ("Rastrigin", "rastrigi
 
 From-scratch Bayesian optimization comes out ahead on both benchmarks at this budget
 — not a universal claim (Optuna's TPE sampler is built for much higher-dimensional
-search spaces than these 2D toys, where a full Gaussian process's `O(n^3)` cost per
-fit becomes the bottleneck GP-based methods are actually known for), just an honest
-result on the specific low-dimensional comparison run here.
+search spaces than these 2D toys, and separately, a full Gaussian process's `O(n^3)`
+cost per fit — which scales with the number of evaluations collected so far, not with
+search-space dimensionality — becomes the bottleneck GP-based methods are actually
+known for as evaluation budgets grow), just an honest result on the specific
+low-dimensional, modest-budget comparison run here.
 
 ## Life as optimization, revisited: what changes once "wellbeing" isn't one number
 
@@ -239,7 +241,7 @@ resolved by a silently-chosen scalar.
 ## Physics, revisited
 
 The physics domain problem this phase's roadmap called for — optimal control of a
-pendulum swing-up — already has its worked example: Chapter 7's
+pendulum swing-up — already has its worked example: Chapter 8's
 `optimlab.control.trajectory_optimization`, driving a pendulum from hanging straight
 down to upright via direct shooting. Restated here only to note it, not duplicated.
 

@@ -33,7 +33,7 @@ zero to exactly zero:
 
 ```{python}
 #| label: fig-lasso-vs-ridge
-#| fig-cap: "Ridge (left story, Chapter 3) shrinks every coefficient smoothly and asymptotically; LASSO (via proximal gradient's soft-thresholding) drives irrelevant coefficients to exactly zero at a finite alpha, and keeps them there."
+#| fig-cap: "Ridge (the earlier story, Chapter 3) shrinks every coefficient smoothly and asymptotically; LASSO (via proximal gradient's soft-thresholding) drives irrelevant coefficients to exactly zero at a finite alpha, and keeps them there."
 import numpy as np
 from optimlab.viz import lasso_path_figure, ridge_path_figure
 
@@ -146,7 +146,7 @@ the same "egg carton" surface at once:
 
 ```{python}
 #| label: fig-all-solvers-3d
-#| fig-cap: "Every gradient-free solver in this chapter on Rastrigin's landscape, in 3D. Gradient descent (not pictured passing this view) would be a near-vertical drop into the single nearest ripple; these searches instead range across the whole surface before committing."
+#| fig-cap: "Every gradient-free solver in this chapter on Rastrigin's landscape, in 3D. Gradient descent (not pictured, but passing through this same view) would be a near-vertical drop into the single nearest ripple; these searches instead range across the whole surface before committing."
 from optimlab.viz import surface_race_figure
 
 surface_race_figure(

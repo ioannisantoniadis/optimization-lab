@@ -249,7 +249,7 @@ resulting (very ordinary) `Problem` to BFGS:
 
 ```{python}
 #| label: fig-catenary
-#| fig-cap: "The straight-line (flat) initial guess bows inward under BFGS until it matches the analytic catenary to 5 decimal places -- direct discretize-then-optimize recovers the same answer as solving the Euler-Lagrange equation by hand."
+#| fig-cap: "The straight-line (flat) initial guess bows inward under BFGS until it matches the analytic catenary to 4 decimal places -- direct discretize-then-optimize recovers the same answer as solving the Euler-Lagrange equation by hand."
 import jax.numpy as jnp
 from scipy.optimize import brentq
 from optimlab.core import Problem
@@ -292,7 +292,7 @@ fig.show()
 ```
 
 The discretized optimum's surface area comes in below the flat guess's, as it must, and
-matches the closed-form catenary to five decimal places — solving an ODE analytically
+matches the closed-form catenary to 4 decimal places — solving an ODE analytically
 and directly optimizing a fine enough discretization of the same functional are, in the
 limit, the same computation.
 

@@ -269,7 +269,8 @@ pointing at.
 ## What's next
 
 Every module in this repo so far has been building and verifying general-purpose
-machinery. Phase 7 turns outward: inverse problems (imaging, PDE-constrained inversion),
-control (LQR, nonlinear optimal control, MPC), and machine learning end to end —
-training a small network or toy transformer with this repo's *own* from-scratch `adam`,
-the same one that trained every network in this chapter.
+machinery. Phase 7 turns outward: inverse problems (image deblurring, nonlinear system
+identification), control (LQR, nonlinear optimal control via direct shooting, and
+grid-world value iteration), and machine learning end to end — manual backpropagation
+and a physics-informed neural network, both trained with this repo's *own* from-scratch
+`adam`/`bfgs`, the same solvers that trained every network in this chapter.

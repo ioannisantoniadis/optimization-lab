@@ -256,7 +256,7 @@ n_evals = 3000
 
 results = {
     "genetic_algorithm": genetic_algorithm(bf.problem(x0=x0.copy()), population_size=60, max_generations=n_evals // 60, seed=0),
-    "particle_swarm": particle_swarm(bf.problem(x0=x0.copy()), seed=0),
+    "particle_swarm": particle_swarm(bf.problem(x0=x0.copy()), n_particles=40, max_iter=n_evals // 40, seed=0),
     "simulated_annealing": simulated_annealing(bf.problem(x0=x0.copy()), max_iter=n_evals, initial_temp=5.0, cooling_rate=0.998, seed=0),
     "optuna (TPE)": optuna_minimize(bf.problem(x0=x0.copy()), bounds=(-5.12, 5.12), n_trials=n_evals, seed=0),
 }
