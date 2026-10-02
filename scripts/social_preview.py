@@ -1,10 +1,10 @@
 """Widescreen banner for the README hero image / GitHub social preview.
 
 A vertical roadmap of the docs book's 9 chapters (docs/_quarto.yml's own
-chapter order and titles), colored with optimlab.viz.theme's validated
-categorical palette, with the existing Rastrigin-landscape hero render
-(docs/images/rastrigin-landscape-hero.png) faded in on the right — reusing
-this repo's own art and color system rather than inventing a new one.
+chapter order and titles) beside a Rastrigin landscape computed and drawn
+here (the same function as docs/images/rastrigin-landscape-hero.png), in
+optimlab.viz.theme's colors. Chapters share one accent color: they are a
+sequence, not categories, and nine items would cycle an 8-color palette.
 
 CHAPTERS is hand-copied from docs/_quarto.yml / README.md's chapter list
 and CATEGORICAL_LIGHT / CHART_CHROME from src/optimlab/viz/theme.py, since
@@ -15,6 +15,8 @@ plotly, ...) for what is just a static label list. Keep in sync by hand.
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyBboxPatch
 
 # From src/optimlab/viz/theme.py — CHART_CHROME["light"] / CATEGORICAL_LIGHT.
@@ -22,6 +24,7 @@ PAGE = "#f9f9f7"
 INK = "#0b0b0b"
 MUTED = "#52514e"
 GRIDLINE = "#e1e0d9"
+ACCENT = "#2a78d6"  # CATEGORICAL_LIGHT[0]
 CATEGORICAL = [
     "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
     "#e87ba4", "#008300", "#4a3aa7", "#e34948",
@@ -66,14 +69,19 @@ def main() -> None:
     ax.set_axis_off()
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
-    # Faded Rastrigin-landscape hero render, bottom-right, behind everything.
-    hero_path = Path(__file__).resolve().parents[1] / "docs" / "images" / "rastrigin-landscape-hero.png"
-    if hero_path.exists():
-        img = plt.imread(str(hero_path))
-        src_w, src_h = 6.6, 6.6 * img.shape[0] / img.shape[1]
-        x0 = 12.8 - src_w + 0.5
-        y0 = 6.4 - src_h + 0.35
-        ax.imshow(img, extent=(x0, x0 + src_w, y0 + src_h, y0), alpha=0.8, zorder=1)
+    # Rastrigin landscape, computed here and drawn as a 3D surface on the right,
+    # fully inside the canvas on a transparent background.
+    ax3 = fig.add_axes([0.46, -0.08, 0.56, 0.95], projection="3d")
+    ax3.set_facecolor((0, 0, 0, 0))
+    g = np.linspace(-5.12, 5.12, 260)
+    X, Y = np.meshgrid(g, g)
+    Z = 20 + X**2 - 10 * np.cos(2 * np.pi * X) + Y**2 - 10 * np.cos(2 * np.pi * Y)
+    cmap = LinearSegmentedColormap.from_list("blues", ["#dbe8f8", ACCENT, "#14457f"])
+    ax3.plot_surface(X, Y, Z, cmap=cmap, rstride=2, cstride=2, linewidth=0,
+                     antialiased=True, alpha=0.95)
+    ax3.view_init(elev=28, azim=-58)
+    ax3.set_box_aspect((1, 1, 0.5), zoom=1.02)
+    ax3.set_axis_off()
 
     # Header.
     ax.text(0.45, 0.62, "optimization-lab", fontsize=25, fontweight="bold",
@@ -86,16 +94,20 @@ def main() -> None:
     top, bottom, gap = 1.85, 6.05, 0.12
     n = len(CHAPTERS)
     chip_h = (bottom - top - (n - 1) * gap) / n
-    chip_x, chip_w = 0.45, 6.35
+    chip_x, chip_w = 0.45, 5.9
     y = top
     for num, label in CHAPTERS:
-        color = CATEGORICAL[(num - 1) % len(CATEGORICAL)]
-        rounded_rect(ax, chip_x, y, chip_w, chip_h, color,
-                     rounding=chip_h / 2.2, alpha=0.94, zorder=3)
-        ax.text(chip_x + 0.22, y + chip_h / 2, f"{num}", fontsize=10.5,
-                 fontweight="800", color="white", ha="left", va="center", zorder=4)
-        ax.text(chip_x + 0.62, y + chip_h / 2, label, fontsize=9.6,
-                 fontweight="600", color="white", ha="left", va="center", zorder=4)
+        rounded_rect(ax, chip_x, y, chip_w, chip_h, "#ffffff", rounding=chip_h / 2.2, zorder=3)
+        ax.add_patch(FancyBboxPatch((chip_x, y), chip_w, chip_h,
+                                    boxstyle=f"round,pad=0,rounding_size={chip_h / 2.2}",
+                                    linewidth=1.0, edgecolor=GRIDLINE, facecolor="none",
+                                    zorder=3, mutation_aspect=1))
+        ax.add_patch(plt.Circle((chip_x + chip_h / 2 + 0.04, y + chip_h / 2), chip_h * 0.36,
+                                color=ACCENT, zorder=4))
+        ax.text(chip_x + chip_h / 2 + 0.04, y + chip_h / 2, f"{num}", fontsize=9.5,
+                 fontweight="bold", color="white", ha="center", va="center", zorder=5)
+        ax.text(chip_x + chip_h + 0.12, y + chip_h / 2, label, fontsize=10,
+                 color=INK, ha="left", va="center", zorder=5)
         y += chip_h + gap
 
     out = Path(__file__).resolve().parents[1] / "docs" / "images" / "social-preview.png"
