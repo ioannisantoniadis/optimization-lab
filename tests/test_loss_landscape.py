@@ -19,15 +19,18 @@ def _trained_network():
     return problem, shape, result.x
 
 
-def test_filter_normalized_direction_matches_each_layers_own_norm():
+def test_filter_normalized_direction_matches_each_filters_own_norm():
+    # Li et al. 2018: each filter (one output neuron's incoming weights, a column of W
+    # here) is rescaled to its own norm in theta*; bias directions are zero.
     shape = MLPShape(layer_sizes=[1, 16, 16, 1])
     base = init_params(shape, seed=0)
     direction = filter_normalized_direction(base, shape, seed=1)
 
-    for (W, _b), (dW, _db) in zip(unflatten(base, shape), unflatten(direction, shape), strict=True):
+    for (W, _b), (dW, db) in zip(unflatten(base, shape), unflatten(direction, shape), strict=True):
         np.testing.assert_allclose(
-            np.linalg.norm(np.asarray(dW)), np.linalg.norm(np.asarray(W)), rtol=1e-5
+            np.linalg.norm(np.asarray(dW), axis=0), np.linalg.norm(np.asarray(W), axis=0), rtol=1e-5
         )
+        np.testing.assert_array_equal(np.asarray(db), 0.0)
 
 
 def test_loss_slice_center_matches_the_base_points_own_loss():

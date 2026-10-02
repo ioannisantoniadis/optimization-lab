@@ -132,8 +132,8 @@ option at all.
 ### Sharp vs. flat minima
 
 Keskar et al.'s "large-batch training finds sharp minima that generalize worse"
-finding is contested [@keskar2016large] — a minimum's *sharpness* isn't even
-reparametrization-invariant, so "sharp" alone doesn't cleanly predict generalization
+finding [@keskar2016large] is contested — a minimum's *sharpness* isn't even
+reparametrization-invariant [@dinh2017sharp], so "sharp" alone doesn't cleanly predict generalization
 the way the original story suggested. What the top Hessian eigenvalue *does* reliably
 track is a training choice's own bias toward sharper or flatter solutions — visible
 directly by comparing plain training against L2-regularized training on the identical
@@ -175,11 +175,14 @@ this specific `l2` happens to produce.
 The network's weight space has 673 dimensions — nothing to contour-plot directly. Slice
 it: pick two random directions, and look at the loss on the 2D plane they span through
 the trained minimum [@li2018visualizing]. The one subtlety is *which* random
-directions — a naive one puts most of its "step size" wherever one layer's weights
-happen to be largest, making the same numeric step look sharp in one network and flat
-in another for reasons that have nothing to do with the loss surface. **Filter
-normalization** fixes this by rescaling each layer's slice of the direction to match
-that layer's own weight norm:
+directions — a naive one puts most of its "step size" wherever the weights happen to
+be largest, making the same numeric step look sharp in one network and flat in another
+for reasons that have nothing to do with the loss surface. **Filter normalization**
+fixes this one *filter* at a time: each neuron's incoming weights in the random
+direction are rescaled to the norm of that same neuron's weights at the minimum (for a
+fully connected layer, Li et al. note, "the filter corresponds to the weights that
+generate one neuron"). Rescaling a whole layer at once is a coarser scheme the paper
+calls layer normalization; bias directions are set to zero, as in the authors' code:
 
 ```{python}
 #| label: fig-loss-landscape

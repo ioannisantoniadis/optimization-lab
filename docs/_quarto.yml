@@ -11,6 +11,10 @@ book:
   site-url: "https://ioannisantoniadis.github.io/optimization-lab/"
   repo-url: "https://github.com/ioannisantoniadis/optimization-lab"
   repo-actions: [edit, issue]
+  image: images/social-preview.png
+  open-graph: true
+  twitter-card:
+    card-style: summary_large_image
   page-footer:
     left: >-
       Source on [GitHub](https://github.com/ioannisantoniadis/optimization-lab).

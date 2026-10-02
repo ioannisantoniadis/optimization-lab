@@ -1,0 +1,48 @@
+name: Check frozen docs outputs
+
+# docs/_quarto.yml uses `freeze: auto`, which re-executes a chapter only when its own
+# .qmd changes. A change to src/optimlab/ can therefore leave the committed
+# docs/_freeze/ outputs stale while every render still succeeds. This job re-executes
+# every chapter from scratch and fails if any printed output differs from the
+# committed one.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/optimlab/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/freeze-check.yml"
+  schedule:
+    - cron: "0 6 * * 1"  # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  fresh-render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --extra viz --extra docs --extra backends
+
+      - name: Register the project venv as a Jupyter kernel
+        run: uv run python -m ipykernel install --user --name optimlab --display-name "optimlab (uv)"
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Render every chapter from scratch
+        run: |
+          cp -r docs/_freeze "$RUNNER_TEMP/committed_freeze"
+          rm -rf docs/_freeze
+          quarto render docs
+
+      - name: Compare printed outputs with the committed freeze
+        run: uv run python scripts/check_freeze.py "$RUNNER_TEMP/committed_freeze" docs/_freeze

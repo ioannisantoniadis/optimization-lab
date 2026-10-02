@@ -9,8 +9,6 @@ domains (physics, economics, machine learning).
 - Docs site: **[ioannisantoniadis.github.io/optimization-lab](https://ioannisantoniadis.github.io/optimization-lab/)**
 - Roadmap / current status: [`ROADMAP.md`](ROADMAP.md)
 
-> Local folder note: this checkout may still be named `optimization/` rather than
-> `optimization-lab/`. Rename it whenever convenient — nothing else depends on the name.
 
 ## Contents
 
@@ -147,8 +145,12 @@ uv run python benchmarks/run_benchmarks.py
 ## Building the docs site
 
 The site is a [Quarto](https://quarto.org) book that executes real `optimlab` code at
-render time, so its figures are regenerated from the actual solvers on every render —
-not hand-copied images. This needs the [Quarto CLI](https://quarto.org/docs/get-started/)
+render time, so its figures come from the actual solvers, not hand-copied images.
+Rendered outputs are cached in `docs/_freeze/` (`freeze: auto`): a chapter re-executes
+only when its own `.qmd` changes, so after changing `src/optimlab/`, re-render the
+affected chapters (or delete `docs/_freeze/` for a full re-execution) and commit the
+refreshed `_freeze/`. The `Check frozen docs outputs` workflow re-executes every chapter on
+`src/` changes and weekly, and fails if any printed output no longer matches. This needs the [Quarto CLI](https://quarto.org/docs/get-started/)
 installed separately (it isn't a Python package):
 
 ```bash

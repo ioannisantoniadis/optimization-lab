@@ -326,8 +326,10 @@ descent works on it anyway.
       — Lanczos alone was already enough for the "few outliers over a near-zero bulk"
       shape this phase actually needed to show.
 - [x] **Loss landscape visualization at scale** [@li2018visualizing]: filter-normalized
-      random 2D slices through weight space (verified: each layer's random direction
-      matches that layer's own weight norm exactly), plus the cheaper
+      random 2D slices through weight space (verified: each neuron's incoming-weight
+      direction matches that neuron's own weight norm exactly, bias directions zero;
+      corrected 2026-10-02 from an earlier per-layer version, which is what Li et al.
+      call layer normalization), plus the cheaper
       [@goodfellow2015qualitatively] linear-interpolation diagnostic.
 - [x] **Mode connectivity** [@garipov2018loss]: two independently trained minima joined
       by a quadratic Bezier curve whose one free control point is found by minimizing

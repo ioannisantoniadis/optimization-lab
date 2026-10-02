@@ -8,8 +8,12 @@ component-wise random direction re-scaled uniformly puts far more of its "step s
 into whichever layer happens to have the largest weight norm, which can make the same
 step size look sharp in one network's landscape and flat in another's purely from
 weight-scale differences that have nothing to do with the loss surface's actual shape.
-Filter normalization fixes this by rescaling each layer's slice of the random direction
-to match that *specific* layer's own weight norm.
+Filter normalization fixes this by rescaling the random direction one *filter* at a time:
+each output neuron's incoming weights in the direction get the same norm as that neuron's
+weights in `theta*` (Li et al. 2018, Sec. 4 — for a fully connected layer "the filter
+corresponds to the weights that generate one neuron"). Rescaling a whole layer at once is a
+different, coarser scheme the paper calls layer normalization. Bias directions are zeroed,
+matching the default (`ignore='biasbn'`) of the authors' reference code.
 """
 
 from __future__ import annotations
@@ -23,10 +27,12 @@ from optimlab.highdim.nets import MLPShape, unflatten
 
 
 def filter_normalized_direction(base_params: ArrayLike, shape: MLPShape, *, seed: int = 0) -> np.ndarray:
-    """A random direction the same size as `base_params`, rescaled layer-by-layer so
-    each layer's slice of the direction has the same norm as that layer's own weights
-    in `base_params` — comparable "step sizes" across layers regardless of how
-    differently-scaled each layer's weights happen to be.
+    """A random direction the same size as `base_params`, rescaled filter-by-filter so
+    each neuron's incoming-weight vector in the direction has the same norm as that
+    neuron's weights in `base_params` — comparable "step sizes" across neurons and layers
+    regardless of how differently-scaled the weights happen to be. Layers here compute
+    `a @ W + b` with `W` of shape `(n_in, n_out)`, so one filter is one *column* of `W`.
+    Bias directions are zero.
     """
     rng = np.random.default_rng(seed)
     base_layers = unflatten(np.asarray(base_params), shape)
@@ -34,11 +40,9 @@ def filter_normalized_direction(base_params: ArrayLike, shape: MLPShape, *, seed
     for W, b in base_layers:
         W, b = np.asarray(W), np.asarray(b)
         dW = rng.standard_normal(W.shape)
-        dW *= np.linalg.norm(W) / (np.linalg.norm(dW) + 1e-12)
-        db = rng.standard_normal(b.shape)
-        db *= np.linalg.norm(b) / (np.linalg.norm(db) + 1e-12)
+        dW *= np.linalg.norm(W, axis=0) / (np.linalg.norm(dW, axis=0) + 1e-10)
         direction_parts.append(dW.ravel())
-        direction_parts.append(db)
+        direction_parts.append(np.zeros_like(b))
     return np.concatenate(direction_parts)
 
 
