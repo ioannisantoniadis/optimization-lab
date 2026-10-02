@@ -39,6 +39,9 @@ jobs:
         uses: quarto-dev/quarto-actions/setup@v2
 
       - name: Render every chapter from scratch
+        env:
+          # Quarto's Jupyter driver must run in the project venv (it needs jupyter/nbformat).
+          QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: |
           cp -r docs/_freeze "$RUNNER_TEMP/committed_freeze"
           rm -rf docs/_freeze
