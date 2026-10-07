@@ -35,7 +35,10 @@ A near-circular image means every input direction gets amplified about equally: 
 perturbation to `b` in `Ax=b` produces a correspondingly small change in `x`. A
 needle-thin ellipse means one direction (the short axis) barely moves under `A` — so
 recovering how far you moved *along* that direction from how far `Ax` moved requires
-dividing by a tiny number, amplifying any noise in `b` by exactly the condition number.
+dividing by a tiny number. The condition number is the worst case of that amplification:
+for square, invertible $A$, a relative error in `b` can become up to
+$\kappa(A) = \sigma_1/\sigma_n$ times larger in `x`, and does when `b` lies along the
+most-stretched direction and the noise along the least-stretched one.
 This isn't an abstract warning: it's the same quantity behind Chapter 1's ill-conditioned
 quadratic (Hessian `diag(1, 100)`), confirmed directly rather than just asserted twice:
 

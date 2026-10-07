@@ -186,7 +186,7 @@ calls layer normalization; bias directions are set to zero, as in the authors' c
 
 ```{python}
 #| label: fig-loss-landscape
-#| fig-cap: "Loss on a filter-normalized 2D slice through the trained minimum (star, at the origin by construction). A clean, roughly convex-looking bowl around this particular minimum -- log-scaled color since the loss climbs several orders of magnitude away from the minimum, the same compression fig-contour uses back in Chapter 1."
+#| fig-cap: "Loss on a filter-normalized 2D slice through the trained minimum (star, at the origin by construction). A clean, roughly convex-looking bowl around this particular minimum -- log-scaled color since the loss climbs several orders of magnitude away from the minimum, the same compression @fig-ill-conditioned uses back in Chapter 1."
 from optimlab.highdim import loss_landscape_slice
 from optimlab.viz import loss_landscape_figure
 

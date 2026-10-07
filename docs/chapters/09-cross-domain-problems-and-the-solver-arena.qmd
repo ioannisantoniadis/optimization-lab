@@ -57,12 +57,14 @@ Portfolio optimization [@markowitz1952portfolio] is, underneath the finance voca
 QP Chapter 3 already solves in closed form: minimize a portfolio's variance
 `0.5 w^T Sigma w` subject to `sum(w) = 1` (fully invested) and a target expected
 return. Sweep the target return and the minimum achievable risk traces the
-**efficient frontier** — for a given amount of risk, this is the best return
-achievable, full stop.
+minimum-variance frontier, a parabola in (return, variance). Only its upper branch,
+from the global-minimum-variance portfolio upward, is the **efficient frontier**: for a
+given amount of risk, the best return achievable. Every portfolio on the lower branch is
+dominated by the upper-branch portfolio with the same risk and a higher return.
 
 ```{python}
 #| label: fig-efficient-frontier
-#| fig-cap: "The Markowitz efficient frontier for 5 synthetic assets. Risk falls to a single global-minimum-variance portfolio (star), then rises again on either side -- demanding either a much higher or a much lower return than that vertex both force more concentrated, less diversified weights."
+#| fig-cap: "The Markowitz minimum-variance frontier for 5 synthetic assets. Risk falls to a single global-minimum-variance portfolio (star), then rises again on either side -- demanding either a much higher or a much lower return than that vertex both force more concentrated, less diversified weights. Only the solid upper branch is efficient; the dashed lower branch is dominated, since the same risk buys a higher return directly above it."
 from optimlab.problems.economics import efficient_frontier, minimum_variance_portfolio
 from optimlab.viz import efficient_frontier_figure
 

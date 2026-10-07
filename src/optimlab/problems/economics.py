@@ -2,8 +2,10 @@
 given target expected return, subject to the two equality constraints
 `optimlab.linalg.qp.equality_constrained_qp` already solves in closed form — weights
 sum to 1 (fully invested) and expected return matches the target. Sweeping the target
-return traces the **efficient frontier**: for a given amount of risk, this is literally
-the best (lowest-variance) reward achievable, and vice versa. Short sales are allowed
+return traces the minimum-variance frontier; its upper branch (at or above the
+global-minimum-variance return) is the **efficient frontier**: for a given amount of
+risk, the best return achievable, and for a given return, the lowest risk. The lower
+branch is dominated by the upper-branch portfolio of equal risk. Short sales are allowed
 (weights can be negative) — the simplest version of the model, where the problem stays
 a pure equality-constrained QP rather than needing the general inequality machinery a
 no-short-selling constraint (`w >= 0`) would.

@@ -23,6 +23,25 @@ def test_efficient_frontier_figure_marks_the_minimum_variance_point():
     assert star_trace.y[0] == frontier.target_returns[min_idx]
 
 
+
+def test_efficient_frontier_figure_labels_only_the_upper_branch_efficient():
+    rng = np.random.default_rng(0)
+    n = 4
+    A = rng.standard_normal((n, n))
+    cov = A @ A.T / n + 0.01 * np.eye(n)
+    expected_returns = rng.uniform(0.02, 0.15, size=n)
+    targets = np.linspace(0.03, 0.13, 11)
+    frontier = efficient_frontier(cov, expected_returns, targets)
+    min_return = frontier.target_returns[np.argmin(frontier.risks)]
+
+    fig = efficient_frontier_figure(frontier)
+    efficient = next(t for t in fig.data if t.name == "efficient frontier")
+    dominated = next(t for t in fig.data if t.name == "dominated (inefficient) branch")
+    assert np.all(np.asarray(efficient.y) >= min_return)
+    assert np.all(np.asarray(dominated.y) <= min_return)
+    # Together the two branches cover every swept target (the vertex appears in both).
+    assert len(efficient.y) + len(dominated.y) == len(targets) + 1
+
 def test_fair_allocation_figure_has_allocation_and_usage_panels():
     A = np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]])
     capacities = np.array([10.0, 10.0])

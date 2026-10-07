@@ -87,8 +87,11 @@ optimum on a genuinely multimodal landscape.
 
 ## Simulated annealing: sometimes taking a worse step, on purpose
 
-Every method so far in this repo — gradient-based or not — only ever moves to a point
-at least as good as where it started. Simulated annealing breaks that rule on purpose: it
+Every method so far in this repo — gradient-based or not — is built to move downhill.
+Some can still overshoot: fixed-step gradient descent with too large a step, or momentum
+and Nesterov carrying velocity past a minimum, can raise $f$ for a few iterations. That
+is a side effect, though, never the plan; none of them accepts a point it can see is
+worse. Simulated annealing does exactly that, on purpose: it
 proposes a random jump and accepts it outright if it's better, but *also* accepts it
 with probability $\exp(-\Delta f / T)$ if it's worse, where $T$ ("temperature") starts
 high and cools every step. Early on, bad moves are accepted often — the walk can climb
