@@ -1,0 +1,5 @@
+# Link targets for the one "Implementation · Checked by" line closing each method section
+# (see CONVENTIONS.md). Kept here so a repo move is a one-line change.
+src: "https://github.com/ioannisantoniadis/optimization-lab/blob/main/src/optimlab"
+tests: "https://github.com/ioannisantoniadis/optimization-lab/blob/main/tests"
+repo: "https://github.com/ioannisantoniadis/optimization-lab"

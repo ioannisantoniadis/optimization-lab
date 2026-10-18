@@ -1,47 +1,54 @@
-"""Compare the printed outputs of a fresh, uncached render against the committed
+"""Compare the computed text of a fresh, uncached render against the committed
 docs/_freeze/ results.
 
-`freeze: auto` re-executes a chapter only when its own .qmd changes, so a change to
+`freeze: auto` re-executes a page only when its own .qmd changes, so a change to
 src/optimlab/ can leave the committed outputs stale without any render failing. CI runs
 this after deleting docs/_freeze/ and rendering from scratch.
 
 Usage: python scripts/check_freeze.py <committed_freeze_dir> <fresh_freeze_dir>
 
-Only printed (stdout) blocks are compared: Plotly figure payloads embed random element ids
-that differ on every render even when the data is identical.
+What is compared is every line of the executed page's Markdown that a computation can
+change: printed output, tables emitted by code cells, and numbers produced by inline
+`{python}` expressions, which the freeze stores already substituted into the prose. Two
+things are removed first because they differ on every render even when nothing changed:
+Plotly figure payloads (random element ids) and cell ids.
 """
 
+import difflib
 import json
 import re
 import sys
 from pathlib import Path
 
+_RAW_HTML = re.compile(r"```\{=html\}.*?```", re.DOTALL)
+_CELL_ID = re.compile(r"\{#[0-9a-f]{8} ")
 
-def printed_blocks(html_json: Path) -> list[str]:
+
+def computed_text(html_json: Path) -> list[str]:
     markdown = json.loads(html_json.read_text())["result"]["markdown"]
-    blocks = re.findall(r"```\n(.*?)\n```", markdown, re.DOTALL)
-    return [b for b in blocks if "plotly" not in b and len(b) < 4000]
+    markdown = _CELL_ID.sub("{", _RAW_HTML.sub("[figure]", markdown))
+    return [line for line in markdown.splitlines() if "plotly" not in line]
 
 
 def main(committed: Path, fresh: Path) -> int:
     failures = 0
-    for fresh_file in sorted(fresh.glob("chapters/*/execute-results/html.json")):
+    for fresh_file in sorted(fresh.glob("**/execute-results/html.json")):
         rel = fresh_file.relative_to(fresh)
         old_file = committed / rel
         if not old_file.exists():
             print(f"NEW   {rel} (no committed freeze to compare)")
             continue
-        new, old = printed_blocks(fresh_file), printed_blocks(old_file)
-        diffs = [(i, a, b) for i, (a, b) in enumerate(zip(new, old)) if a != b]
-        if len(new) != len(old) or diffs:
+        new, old = computed_text(fresh_file), computed_text(old_file)
+        if new != old:
             failures += 1
-            print(f"STALE {rel}: {len(old)} committed vs {len(new)} fresh printed blocks, {len(diffs)} differ")
-            for i, a, b in diffs[:3]:
-                print(f"  block {i}:\n    committed: {b[:200]!r}\n    fresh:     {a[:200]!r}")
+            diff = list(difflib.unified_diff(old, new, "committed", "fresh", n=0, lineterm=""))
+            print(f"STALE {rel}: {sum(1 for d in diff if d.startswith(('+', '-')))} changed lines")
+            for line in diff[2:14]:
+                print(f"  {line[:200]}")
         else:
-            print(f"OK    {rel} ({len(new)} printed blocks)")
+            print(f"OK    {rel} ({len(new)} lines)")
     if failures:
-        print(f"\n{failures} chapter(s) have stale committed outputs: re-render them and commit docs/_freeze/.")
+        print(f"\n{failures} page(s) have stale committed outputs: re-render them and commit docs/_freeze/.")
     return 1 if failures else 0
 
 

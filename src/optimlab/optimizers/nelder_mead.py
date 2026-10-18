@@ -34,6 +34,7 @@ def nelder_mead(
     gamma: float = 2.0,
     rho: float = 0.5,
     sigma: float = 0.5,
+    record_history: bool = False,
 ) -> OptimizeResult:
     """The standard reflect / expand / contract / shrink loop (Nocedal & Wright,
     Algorithm 9.1-adjacent). `tol` is checked against the *spread* of `f` values across
@@ -41,6 +42,11 @@ def nelder_mead(
     no gradient: a simplex that has collapsed onto a single point of nearly-equal
     function value has nowhere better nearby to reflect toward, the same way a
     near-zero gradient means no descent direction remains.
+
+    `record_history=True` also stores every iteration's simplex (an `(n+1, n)` array of
+    vertices, initial simplex first) in `result.history["simplex"]`, and the move that
+    produced it (`"reflect"`, `"expand"`, `"contract"` or `"shrink"`) in
+    `result.history["move"]`.
     """
     n = problem.n_dim
     simplex = _initial_simplex(problem.x0.copy(), step)
@@ -57,6 +63,8 @@ def nelder_mead(
     g_hist = [float(np.std(f_values))]
 
     converged = g_hist[0] < tol
+    simplex_hist = [simplex.copy()] if record_history else None
+    move_hist: list[str] = []
     n_iter = 0
     while not converged and n_iter < max_iter:
         centroid = simplex[:-1].mean(axis=0)
@@ -67,13 +75,16 @@ def nelder_mead(
 
         if best_f <= f_reflected < second_worst_f:
             simplex[-1], f_values[-1] = reflected, f_reflected
+            move = "reflect"
         elif f_reflected < best_f:
             expanded = centroid + gamma * (reflected - centroid)
             f_expanded = float(problem.f(expanded))
             if f_expanded < f_reflected:
                 simplex[-1], f_values[-1] = expanded, f_expanded
+                move = "expand"
             else:
                 simplex[-1], f_values[-1] = reflected, f_reflected
+                move = "reflect"
         else:
             if f_reflected < f_values[-1]:  # outside contraction
                 contracted = centroid + rho * (reflected - centroid)
@@ -86,12 +97,17 @@ def nelder_mead(
 
             if not shrink_needed:
                 simplex[-1], f_values[-1] = contracted, f_contracted
+                move = "contract"
             else:
                 for i in range(1, n + 1):
                     simplex[i] = simplex[0] + sigma * (simplex[i] - simplex[0])
                     f_values[i] = float(problem.f(simplex[i]))
+                move = "shrink"
 
         sort_simplex()
+        if simplex_hist is not None:
+            simplex_hist.append(simplex.copy())
+            move_hist.append(move)
         n_iter += 1
         x_hist.append(simplex[0].copy())
         f_hist.append(float(f_values[0]))
@@ -100,7 +116,11 @@ def nelder_mead(
         if g_hist[-1] < tol:
             converged = True
 
-    return track_iterations(
+    result = track_iterations(
         x_hist, f_hist, g_hist, converged=converged, solver_name="nelder_mead",
         message="simplex collapsed below tol" if converged else "max_iter reached",
     )
+    if simplex_hist is not None:
+        result.history["simplex"] = simplex_hist
+        result.history["move"] = move_hist
+    return result

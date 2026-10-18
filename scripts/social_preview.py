@@ -32,15 +32,15 @@ CATEGORICAL = [
 
 # (chapter number, short label) — from docs/_quarto.yml's chapter order.
 CHAPTERS = [
-    (1, "Foundations: Convexity & Gradients"),
-    (2, "Linear Programming"),
-    (3, "Least Squares"),
-    (4, "Nonsmooth & Global Optimization"),
+    (1, "The Geometry of an Objective"),
+    (2, "Gradient Methods"),
+    (3, "Linear Programming"),
+    (4, "Least Squares & Regularization"),
     (5, "Constraints & Duality"),
-    (6, "Bayesian Modeling & Estimation"),
-    (7, "High-Dimensional Non-Convexity"),
-    (8, "Domain Applications"),
-    (9, "Cross-Domain & the Solver Arena"),
+    (6, "Derivative-Free & Global Search"),
+    (7, "Estimation as Optimization"),
+    (8, "High-Dimensional Landscapes"),
+    (9, "Applications"),
 ]
 
 FONT = "Helvetica Neue, Arial, sans-serif"
@@ -86,8 +86,8 @@ def main() -> None:
     # Header.
     ax.text(0.45, 0.62, "optimization-lab", fontsize=25, fontweight="bold",
              color=INK, ha="left", va="top", zorder=3)
-    ax.text(0.45, 1.28, "A living lab for applied mathematical optimization — "
-                        "from-scratch solvers, real comparisons",
+    ax.text(0.45, 1.28, "Applied mathematical optimization, from first principles — "
+                        "every figure computed",
             fontsize=12.5, color=MUTED, ha="left", va="top", zorder=3)
 
     # Vertical chapter roadmap, left column.

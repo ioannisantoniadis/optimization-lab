@@ -473,6 +473,37 @@ since Phase 1 sharing the identical `Problem -> OptimizeResult` interface.
 - [x] Docs chapter (`09-cross-domain-problems-and-the-solver-arena.qmd`) covering all
       of the above end to end, reviewed in a real browser tab.
 
+## Phase 9 — Book rewrite: from lab notes to a book — **done** (2026-10-18)
+
+Prompted by owner feedback on the docs site: chapters were dense but explained the
+algorithms too briefly (SVD, particle swarm, genetic algorithms), showed code inline by
+default, named package functions in place of algorithms, and referred to roadmap phases.
+The sibling books (`rl-for-llms`, `loss-functions-lab`, `data-lab`) and
+`objectives-book`'s SPEC set the target format.
+
+- [x] Restructured into a map, four parts and nine chapters (the old foundations and
+      nonsmooth/global chapters each split; least squares absorbed proximal gradient;
+      the two application chapters merged; the solver arena moved to an appendix), plus
+      appendices: choosing an algorithm, notation, the code, further reading.
+- [x] Every method section rewritten to one template (`CONVENTIONS.md`): idea, update
+      rule, the derivation step it rests on, settings, failure modes, and a single
+      implementation/tests line. Code folded by default; all prose numbers computed by
+      inline expressions or `markdown_table`; cross-references by Quarto ID.
+- [x] New computed figures for mechanisms that were only named before: the SVD as
+      rotate–stretch–rotate, Nelder–Mead's moves, swarm and GA population snapshots,
+      one Bayesian-optimization step (GP + expected improvement), ADMM's primal vs.
+      dual residuals. Supporting library changes are opt-in (`record_history=True` on
+      Nelder–Mead, GA, PSO and ADMM, stored in `OptimizeResult.history`).
+- [x] Every caption and prose claim re-checked against the actual run. This found and
+      fixed inherited errors: the Himmelblau race caption claimed one solver per well
+      (three of four share one); the Rastrigin gradient-descent demo had not converged
+      (step above 2/L); the week-allocation chapter attributed the genetic algorithm's
+      "compromise" answer to blend crossover, when re-running showed the budget-as-penalty
+      formulation was the cause (with the budget built in exactly, the GA finds the best
+      allocation on every seed).
+- [x] `scripts/check_freeze.py` now compares all computed text (tables, inline numbers),
+      across chapters and appendices, not just printed blocks.
+
 ## Non-goals
 
 This repo isn't trying to be a single-purpose optimizer-visualization demo, a

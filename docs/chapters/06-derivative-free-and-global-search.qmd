@@ -1,0 +1,403 @@
+# Derivative-Free and Global Search {#sec-derivative-free}
+
+Everything so far has relied on derivatives. Sometimes there are none to use. The
+objective may be a simulation or an experiment that returns a number and nothing else;
+it may be noisy, so finite-difference gradients are meaningless; it may have kinks and
+jumps. And sometimes derivatives are available but misleading: on a landscape riddled with
+local minima, following the local slope leads reliably into the nearest one, which is
+usually not the best. This chapter covers methods that use only function values. One of
+them, Nelder–Mead, is a local method that replaces the gradient with geometry. The others
+deliberately trade local efficiency for **global exploration**: simulated annealing
+accepts worse points on purpose, genetic algorithms and particle swarms move whole
+populations, and Bayesian optimization builds a statistical model of the objective to
+decide where to look next when every evaluation is expensive. None of the global methods
+can guarantee the global optimum in a finite budget. What they offer instead is a much
+better chance of finding a good region than any local method has.
+
+## The problem
+
+Minimize $f$ over a box $[\ell, u]^n$, using only evaluations $f(x)$. The cost of a
+method is counted in evaluations. A **multimodal** test function makes the difference
+between local and global search visible. The Rastrigin function,
+$$
+f(x) = 10n + \sum_{i=1}^n \big(x_i^2 - 10\cos(2\pi x_i)\big),
+$$
+is a bowl covered in regular ripples: its global minimum is $f(0) = 0$, and in the
+standard box $[-5.12, 5.12]^2$ it has 121 local minima, one near each point
+with integer coordinates. A gradient method started anywhere but the central basin stops
+in a ripple.
+
+## Nelder–Mead: a simplex that walks downhill
+
+Nelder–Mead [@nelder1965simplex] keeps $n + 1$ points, a **simplex** (a triangle in two
+dimensions), and replaces the worst one at every step. The geometric idea: the worst
+point is probably on the wrong side, so try its mirror image through the others.
+
+::: {.callout-note title="Algorithm — Nelder–Mead (one iteration)"}
+Order the vertices so that $f(x_1) \le \dots \le f(x_{n+1})$, and let $\bar x$ be the
+centroid of all but the worst vertex $x_{n+1}$.
+
+1. **Reflect**: $x_r = \bar x + (\bar x - x_{n+1})$. If $x_r$ is better than the
+   second-worst vertex but not better than the best, replace the worst vertex with it.
+2. **Expand**: if $x_r$ is better than the best vertex, the direction is promising, so
+   try going twice as far, $x_e = \bar x + 2(\bar x - x_{n+1})$, and keep whichever of
+   $x_e$ and $x_r$ is better.
+3. **Contract**: if $x_r$ is no better than the second-worst vertex, try a point halfway
+   between $\bar x$ and the better of $x_r$ and $x_{n+1}$. Keep it if it improves on
+   that point.
+4. **Shrink**: if even that fails, pull every vertex halfway toward the best one.
+
+Stop when the function values at the vertices are all nearly equal.
+:::
+
+Reflection and expansion move the simplex downhill and stretch it along good directions;
+contraction and shrinking pull it in when it straddles a minimum. The simplex therefore
+adapts its own shape to the landscape, much as a quasi-Newton method adapts its curvature
+estimate, but using only comparisons of function values.
+
+```{python}
+#| label: fig-nelder-mead
+#| fig-cap: "The first 40 simplices of Nelder–Mead on Rosenbrock's function, colored by the move that produced each one. Expansions stretch the triangle down the valley's slope, reflections walk it along the curved valley floor, and contractions shrink it where it overshoots."
+import numpy as np
+
+from optimlab.landscapes import get
+from optimlab.optimizers import (
+    gradient_descent, genetic_algorithm, nelder_mead, particle_swarm, simulated_annealing,
+)
+from optimlab.viz import (
+    markdown_table, population_snapshots_figure, race_figure, simplex_steps_figure,
+    surface_race_figure,
+)
+
+rosenbrock = get("rosenbrock").problem(x0=np.array([-1.2, 1.0]))
+nm = nelder_mead(rosenbrock, max_iter=200, record_history=True)
+simplex_steps_figure(rosenbrock, nm, n_steps=40).show()
+```
+
+On Rosenbrock's function, Nelder–Mead reaches $f \approx$ `{python} f"{nm.f:.0e}"` in
+`{python} nm.n_iter` iterations without ever computing a derivative. It works well in a
+few dimensions and degrades as $n$ grows, because a simplex in many dimensions needs many
+steps to reorient itself. It has no general convergence guarantee: McKinnon constructed
+smooth, strictly convex functions in two dimensions on which it converges to a point that
+is not a minimum [@mckinnon1998convergence]. And like every local method, it finds the
+nearest basin, not the best one.
+
+[Implementation: [`optimizers/nelder_mead.py`]({{< var src >}}/optimizers/nelder_mead.py) ·
+Checked by: [`test_nelder_mead.py`]({{< var tests >}}/test_nelder_mead.py)]{.impl}
+
+## Simulated annealing: accepting worse points on purpose
+
+Every method so far aims to go downhill. Simulated annealing [@kirkpatrick1983optimization]
+sometimes goes uphill deliberately, so that it can climb out of a local minimum. The name
+comes from metallurgy: cooling a metal slowly lets its atoms settle into a low-energy
+crystal, while cooling it quickly freezes in defects.
+
+::: {.callout-note title="Algorithm — Simulated annealing"}
+Start from $x$ with a temperature $T > 0$. Repeat:
+
+1. **Propose** a random nearby point $x'$; here $x' = x + s\,T\,\xi$ with
+   $\xi \sim \mathcal{N}(0, I)$, so steps are large while the temperature is high.
+2. **Accept or reject**: with $\Delta = f(x') - f(x)$, move to $x'$ if $\Delta \le 0$;
+   otherwise move to it with probability $\exp(-\Delta / T)$.
+3. **Cool**: $T \leftarrow c\,T$ with $0 < c < 1$.
+
+Keep track of the best point seen, which is not the same as the current point.
+:::
+
+### Why it works
+
+The acceptance rule in step 2 is the **Metropolis rule**, the same one used for sampling
+in @sec-estimation. At a fixed temperature, a random walk that uses it spends time at
+each point in proportion to $\exp(-f(x)/T)$. When $T$ is large that distribution is
+nearly flat and the walk roams freely, crossing barriers between basins. As $T \to 0$ it
+concentrates ever more sharply on the lowest points of $f$. Cooling slowly enough lets
+the walk track this changing distribution as it narrows onto the global minimum; there
+are theoretical guarantees, but they require cooling schedules far too slow to use, so
+practical implementations cool geometrically and accept the risk of freezing in a local
+basin.
+
+### Settings that matter
+
+The initial temperature should make early uphill moves of typical size likely. The
+cooling factor sets the trade-off between exploration and time: cool too fast and the
+walk freezes in the first decent basin it finds. The proposal scale $s$ sets how far each
+jump reaches.
+
+```{python}
+#| label: fig-sa-escapes
+#| fig-cap: "Same start, same Rastrigin landscape. Gradient descent stops in the nearest ripple within a handful of steps. Simulated annealing's willingness to accept worse moves lets its random walk cross into the central basin of the global minimum. The plotted path is its best point so far."
+rastrigin = get("rastrigin")
+start = np.array([4.3, -3.7])  # in a ripple far from the global minimum at the origin
+
+# step below 2/L: Rastrigin's curvature reaches about 2 + 40π² ≈ 400
+gd = gradient_descent(rastrigin.problem(x0=start.copy()), lr=0.002, max_iter=500)
+sa = simulated_annealing(rastrigin.problem(x0=start.copy()), max_iter=3000,
+                         initial_temp=5.0, cooling_rate=0.998, seed=0)
+fig = race_figure(rastrigin.problem(x0=start),
+                  {"Gradient descent": gd, "Simulated annealing": sa})
+fig.update_layout(title="Rastrigin's function: local vs. global search")
+fig.show()
+```
+
+Gradient descent converges in `{python} gd.n_iter` steps to the bottom of its ripple, a
+local minimum with $f =$ `{python} f"{gd.f:.1f}"`. Simulated annealing ends at
+$f =$ `{python} f"{sa.f:.2f}"`: in the global minimum's basin, but not at its bottom,
+because once the temperature is low its steps are too small and too random to polish the
+answer. A few steps of a local method from the annealing result would finish the job, and
+that combination is common in practice.
+
+[Implementation: [`optimizers/simulated_annealing.py`]({{< var src >}}/optimizers/simulated_annealing.py) ·
+Checked by: [`test_simulated_annealing.py`]({{< var tests >}}/test_simulated_annealing.py)]{.impl}
+
+## Genetic algorithms: evolving a population
+
+Simulated annealing explores with one point. Population methods explore with many at
+once, which lets them sample several regions in parallel and combine what they learn.
+Genetic algorithms [@holland1975adaptation] borrow the vocabulary of evolution: a
+**population** of candidate points, a **fitness** (here, a low $f$), **selection** of
+the fit, **crossover** that combines two parents into a child, and **mutation** that
+adds random variation.
+
+::: {.callout-note title="Algorithm — A genetic algorithm for continuous variables (one generation)"}
+Given a population of $N$ points in the box $[\ell, u]^n$, sorted by $f$:
+
+1. **Elitism**: copy the best few points (here 10% of the population) into the next
+   generation unchanged, so the best answer is never lost.
+2. Fill the rest of the next generation one child at a time:
+   a. **Selection**: pick each parent by *tournament*, drawing three random members and
+      keeping the fittest.
+   b. **Crossover**: blend the two parents, $x_{\text{child}} = t\,x_{p_1} +
+      (1 - t)\,x_{p_2}$ with $t \sim \mathrm{Uniform}(0, 1)$, a random point on the
+      segment between them.
+   c. **Mutation**: with a small probability per coordinate (here 0.2), add Gaussian
+      noise scaled to the width of the box; then clip the child back into the box.
+3. Evaluate the new population and sort it.
+:::
+
+Each operator has a job. Selection concentrates the population where $f$ is low.
+Crossover moves children between good parents, which can land in a region neither parent
+was in. Mutation keeps diversity alive, so the population does not collapse onto one
+point before it has explored enough. The result is a heuristic: there is no convergence
+rate and no guarantee, but the population's spread makes it hard to trap.
+
+```{python}
+#| label: fig-ga-snapshots
+#| fig-cap: "A genetic algorithm's population on Rastrigin's function at four generations. The initial population covers the whole box; selection and blend crossover gather it into the central basin within a few generations, and elitism keeps the best point there while mutation keeps a few explorers outside."
+ga = genetic_algorithm(rastrigin.problem(x0=start.copy()), seed=0, record_history=True)
+population_snapshots_figure(rastrigin.problem(x0=start), ga, [0, 3, 10, 40]).show()
+```
+
+### Settings that matter
+
+A larger population explores more per generation at a higher cost per generation. The
+tournament size sets the **selection pressure**: larger tournaments favor the best
+points more strongly and converge faster, at the risk of losing diversity too early. The
+mutation rate and scale set how much the algorithm keeps exploring after the population
+has gathered. Blend crossover also has a built-in tendency: a child always lies between
+its parents, so the population is drawn toward the interior of the region its good members
+span. Constraints interact with all of this. @sec-applications shows a problem where
+writing a constraint as a penalty keeps a genetic algorithm from finding the best answer,
+and writing it exactly lets it find that answer every time.
+
+[Implementation: [`optimizers/genetic_algorithm.py`]({{< var src >}}/optimizers/genetic_algorithm.py) ·
+Checked by: [`test_genetic_algorithm.py`]({{< var tests >}}/test_genetic_algorithm.py)]{.impl}
+
+## Particle swarm optimization: a flock with momentum
+
+Particle swarm optimization [@kennedy1995particle] also moves a population, but with no
+selection, crossover or mutation. Each particle has a position and a velocity, remembers
+the best point it has visited itself, and knows the best point any particle has visited.
+Its velocity is pulled toward both.
+
+::: {.callout-note title="Definition — Particle swarm update"}
+For particle $i$ at position $x_i$ with velocity $v_i$, personal best $p_i$ and swarm best
+$p_{\text{swarm}}$:
+$$
+\begin{aligned}
+v_i &\leftarrow \omega\, v_i + c_1\, r_1 \odot (p_i - x_i) + c_2\, r_2 \odot (p_{\text{swarm}} - x_i), \\
+x_i &\leftarrow x_i + v_i ,
+\end{aligned}
+$$
+with fresh random vectors $r_1, r_2$ drawn uniformly from $[0, 1]^n$ at every step and
+$\odot$ the coordinate-wise product. Here $\omega = 0.7$, $c_1 = c_2 = 1.5$.
+:::
+
+The three terms are easy to read. **Inertia** $\omega v_i$ keeps a particle moving in its
+current direction, exactly like the momentum of @sec-gradient-methods. The **cognitive**
+term pulls it back toward its own best find. The **social** term pulls it toward the
+swarm's best find. The random factors make each pull vary in strength from step to step
+and coordinate to coordinate, so particles overshoot and oscillate around the attractors
+instead of moving straight to them, and that oscillation is what explores the space
+between them.
+
+```{python}
+#| label: fig-pso-snapshots
+#| fig-cap: "A particle swarm on Rastrigin's function. The particles start spread over the box, are pulled toward the best points found so far, oscillate around them while sampling the space in between, and finally gather in the global minimum's basin."
+pso = particle_swarm(rastrigin.problem(x0=start.copy()), seed=0, record_history=True)
+population_snapshots_figure(rastrigin.problem(x0=start), pso, [0, 5, 20, 60]).show()
+```
+
+### Settings that matter
+
+$\omega$ controls how long particles keep exploring. Too high and the swarm keeps
+flying past good regions and never settles; too low and it collapses onto the first
+decent point. $c_1$ and $c_2$ balance individual against collective memory: a large
+social weight makes the swarm converge fast and risks converging on a local minimum
+together.
+
+[Implementation: [`optimizers/particle_swarm.py`]({{< var src >}}/optimizers/particle_swarm.py) ·
+Checked by: [`test_particle_swarm.py`]({{< var tests >}}/test_particle_swarm.py)]{.impl}
+
+## The global searchers side by side
+
+```{python}
+#| label: fig-all-solvers-3d
+#| fig-cap: "The best-point paths of simulated annealing, the genetic algorithm and particle swarm on the 3D Rastrigin surface. All three range across the ripples before committing, unlike a gradient method's drop into the nearest one. Drag to rotate."
+surface_race_figure(
+    rastrigin.problem(x0=start),
+    {"Simulated annealing": sa, "Genetic algorithm": ga, "Particle swarm": pso},
+).show()
+```
+
+With a fixed budget of evaluations, the picture is clearer as a table. Optuna's
+tree-structured Parzen estimator (TPE), a widely used model-based method for tuning
+hyperparameters [@bergstra2011algorithms], is included for comparison:
+
+```{python}
+#| label: tbl-budget-3000
+#| tbl-cap: "Best value found on Rastrigin's function (global minimum 0) with about 3,000 evaluations each, from the same start. All four reach the global minimum's basin; the population methods also polish it."
+from optimlab.backends import optuna_minimize
+
+budget = 3000
+runs = {
+    "Genetic algorithm (60 × 50 generations)": genetic_algorithm(
+        rastrigin.problem(x0=start.copy()), population_size=60,
+        max_generations=budget // 60, seed=0),
+    "Particle swarm (40 × 75 iterations)": particle_swarm(
+        rastrigin.problem(x0=start.copy()), n_particles=40, max_iter=budget // 40, seed=0),
+    "Simulated annealing": simulated_annealing(
+        rastrigin.problem(x0=start.copy()), max_iter=budget, initial_temp=5.0,
+        cooling_rate=0.998, seed=0),
+    "TPE (Optuna)": optuna_minimize(rastrigin.problem(x0=start.copy()),
+                                    bounds=(-5.12, 5.12), n_trials=budget, seed=0),
+}
+markdown_table(["method", "best f"], [(k, f"{r.f:.1e}") for k, r in runs.items()])
+```
+
+## Bayesian optimization: when every evaluation is expensive
+
+The methods above spend thousands of evaluations. When one evaluation means training a
+model for an hour or running a physical experiment, the budget is tens, and it is worth
+spending real computation to choose each point well. Bayesian optimization
+[@jones1998efficient] does this by keeping a **statistical model of $f$** built from
+every evaluation so far, and choosing the next point where the model says improvement is
+most likely to be worth the cost.
+
+### The surrogate: a Gaussian process
+
+A **Gaussian process** is a probability distribution over functions, defined by a mean
+(here zero) and a **kernel** $K(x, x')$ that says how strongly the values at two points
+are correlated [@rasmussen2006gaussian]. The squared-exponential kernel
+$K(x, x') = \sigma_f^2 \exp\!\big(-\lVert x - x' \rVert^2 / (2\ell_K^2)\big)$ encodes one
+assumption: points closer than the length scale $\ell_K$ have similar values. Given
+evaluations $y = (f(x_1), \dots, f(x_k))$, the predicted value at a new point $x$ is
+Gaussian, with mean and variance in closed form:
+$$
+\mu(x) = k_x^\top \mathbf{K}^{-1} y,
+\qquad
+s^2(x) = K(x, x) - k_x^\top \mathbf{K}^{-1} k_x ,
+$$
+where $\mathbf{K}$ is the matrix of kernel values between the evaluated points and $k_x$
+the vector of kernel values between them and $x$. The mean interpolates the data; the
+uncertainty $s(x)$ is zero at evaluated points and grows with distance from them.
+
+### The acquisition: expected improvement
+
+Let $f_{\text{best}}$ be the lowest value found so far. If the model's belief about $f(x)$
+is $\mathcal{N}(\mu(x), s(x)^2)$, the expected amount by which $f(x)$ beats
+$f_{\text{best}}$ is
+$$
+\mathrm{EI}(x) = \big(f_{\text{best}} - \mu(x)\big)\,\Phi(z) + s(x)\,\phi(z),
+\qquad z = \frac{f_{\text{best}} - \mu(x)}{s(x)} ,
+$$
+with $\Phi$ and $\phi$ the standard normal distribution and density. The first term is
+large where the model predicts a low value (**exploitation**); the second is large where
+the model is uncertain (**exploration**). Maximizing EI, a cheap problem because the
+model is cheap to evaluate, picks the next point.
+
+```{python}
+#| label: fig-bayes-opt
+#| fig-cap: "One step of Bayesian optimization on a one-dimensional function, after four evaluations. Top: the Gaussian-process surrogate's mean and uncertainty band, which pass through the evaluated points. Bottom: expected improvement, high next to the best point so far and in the wide uncertain gaps between points. The dashed line marks its maximizer, the next point to evaluate."
+from optimlab.viz import bayes_opt_step_figure
+
+def wiggle(x):
+    return np.sin(3 * x) + 0.3 * x**2
+
+bayes_opt_step_figure(wiggle, [-2.4, -0.9, 0.4, 2.2], (-3.0, 3.0),
+                      length_scale=0.6, variance=1.5).show()
+```
+
+::: {.callout-note title="Algorithm — Bayesian optimization"}
+1. Evaluate $f$ at a few random points.
+2. Repeat until the budget is spent:
+   a. Fit the Gaussian process to all evaluations.
+   b. Find the point that maximizes expected improvement (here, by scoring 1,000 random
+      candidates).
+   c. Evaluate $f$ there and add the result.
+3. Return the best point evaluated.
+:::
+
+Fitting the Gaussian process requires solving a linear system with the $k \times k$
+matrix $\mathbf{K}$, which costs $O(k^3)$. That is negligible next to an hour-long
+evaluation when $k$ is in the tens or hundreds, and prohibitive when $k$ is in the tens
+of thousands, the regime of the table above. TPE takes a different route: it models
+which regions produced good and bad values rather than the function itself, which scales
+better with the number of evaluations and with mixed discrete and continuous parameters.
+At a small budget:
+
+```{python}
+#| label: tbl-small-budget
+#| tbl-cap: "Best value found with 38 evaluations (Himmelblau's minimum is 0, Rastrigin's is 0). Random search is the median over 20 seeds. At this budget, the Gaussian-process model's use of every evaluation pays off; on another problem or another budget the ranking can change."
+from optimlab.optimizers import bayesian_optimize
+
+rows = []
+for name, x0, box in [("Himmelblau", [-4.0, 4.0], (-5.0, 5.0)),
+                      ("Rastrigin", [4.3, -3.7], (-5.12, 5.12))]:
+    p = get(name.lower()).problem(x0=np.array(x0))
+    bo = bayesian_optimize(p, bounds=box, n_init=8, n_iter=30, length_scale=1.5, seed=0)
+    tpe = optuna_minimize(p, bounds=box, n_trials=38, seed=0)
+    random_best = np.median([
+        min(float(p.f(x)) for x in np.random.default_rng(s).uniform(*box, size=(38, 2)))
+        for s in range(20)
+    ])
+    rows.append((name, f"{bo.f:.3g}", f"{tpe.f:.3g}", f"{random_best:.3g}"))
+markdown_table(["function", "Bayesian optimization", "TPE (Optuna)", "random search"], rows)
+```
+
+[Implementation: [`optimizers/bayesian_optimization.py`]({{< var src >}}/optimizers/bayesian_optimization.py) ·
+Checked by: [`test_bayesian_optimization.py`]({{< var tests >}}/test_bayesian_optimization.py)]{.impl}
+
+## What these examples cannot show
+
+- **Dimension.** Every comparison here is two-dimensional, where a population of 40
+  covers the box well. The number of points needed to cover a box grows exponentially
+  with dimension; @sec-high-dim shows how strange high-dimensional space is.
+  Population methods and Bayesian optimization both struggle beyond a few dozen
+  dimensions without problem-specific structure.
+- **Noise.** Real black-box objectives are often noisy. Comparing two noisy values can
+  rank them wrongly, which hurts Nelder–Mead and simulated annealing in particular.
+- **Generality.** These methods were compared on two benchmark functions with one set of
+  settings each. A different landscape, budget or tuning can reverse the ranking; no
+  black-box method beats every other on every problem.
+
+## Connections
+
+- **@sec-gradient-methods**: particle swarm's inertia is momentum, and Nelder–Mead's
+  adapting simplex plays the role of a curvature estimate.
+- **@sec-estimation**: simulated annealing's acceptance rule is the Metropolis rule, used
+  there to sample from a posterior distribution instead of to optimize.
+- **@sec-high-dim** explains why the global-search problem that motivates this chapter
+  is, surprisingly, *not* the main obstacle when training large neural networks.
+- **@sec-applications** puts a genetic algorithm and simulated annealing to work on a
+  small, deliberately toy decision problem, where the formulation of one constraint
+  decides whether either finds the best answer, and on a two-objective version of it.

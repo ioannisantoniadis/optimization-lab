@@ -1,0 +1,75 @@
+# The Map {#sec-map .unnumbered}
+
+Optimization methods are easiest to understand by what they need to know about a
+problem and what they promise in return. This page lays out the book along those two
+lines.
+
+## What a method needs to know
+
+The first question to ask of any problem is what can be computed about the objective
+at a point, and what structure the problem has.
+
+```{mermaid}
+%%| label: fig-map
+%%| fig-cap: "Choosing a family of methods by the structure of the problem."
+flowchart TD
+    Q{"What do you know<br/>about the objective?"}
+    Q -->|"linear objective,<br/>linear constraints"| LP["Linear programming"]
+    Q -->|"sum of squares"| LS["Least squares,<br/>regularization"]
+    Q -->|"smooth, with<br/>gradients"| C{"Constraints?"}
+    C -->|"none"| G["Gradient and curvature<br/>methods"]
+    C -->|"equalities,<br/>inequalities"| K["KKT, barrier,<br/>ADMM"]
+    Q -->|"smooth part +<br/>simple kink"| P["Proximal gradient"]
+    Q -->|"values only,<br/>or many local minima"| D["Derivative-free and<br/>global search"]
+    Q -->|"a likelihood<br/>built from data"| E["Estimation"]
+```
+
+The boxes correspond to chapters: linear programming to @sec-linear-programming; least
+squares and proximal gradient to @sec-least-squares; gradient and curvature methods to
+@sec-gradient-methods; KKT conditions, the barrier method and ADMM to
+@sec-constraints; derivative-free and global search to @sec-derivative-free; and
+estimation to @sec-estimation.
+
+## What a method promises
+
+Structure buys guarantees. The more a problem has, the stronger the promise:
+
+| problem | typical method | what it promises |
+|---|---|---|
+| linear program | simplex, interior point | the exact optimum, or a proof there is none |
+| convex, smooth | gradient methods, Newton | the global minimum, at a known rate set by the condition number |
+| convex, constrained | barrier method, ADMM | the global minimum, with a duality gap that certifies how close |
+| smooth, non-convex | the same gradient methods | a stationary point, usually a local minimum |
+| black box, multimodal | annealing, populations, Bayesian optimization | a good point within the budget; no certificate |
+
+: Guarantees by problem class. {#tbl-guarantees}
+
+The first two parts of the book live in the top rows, where answers are exact or
+certified. Part III moves down the table, where methods keep working but promise less,
+and asks the question that makes modern machine learning possible at all: why local
+methods find good answers on enormous non-convex problems (@sec-high-dim).
+
+## The thread through the chapters
+
+Four ideas recur, and following them is a good way to read the book.
+
+- **Slope and curvature** (@sec-geometry) drive every gradient method
+  (@sec-gradient-methods) and reappear as the uncertainty of an estimate
+  (@sec-estimation) and the spectrum of a neural network's loss (@sec-high-dim).
+- **The condition number** sets the speed of gradient descent, the accuracy of least
+  squares (@sec-least-squares), and the reason regularization helps.
+- **Multipliers** turn constraints into prices (@sec-constraints), from the shadow prices
+  of a linear program (@sec-linear-programming) to the link prices of a fair network
+  (@sec-applications).
+- **Local versus global**: convexity makes local answers global; without it, methods
+  either accept a local answer or spend their budget exploring (@sec-derivative-free).
+
+## Reading paths
+
+- **The full course**: Chapters 1 to 9 in order.
+- **Machine learning**: @sec-geometry, @sec-gradient-methods, @sec-least-squares,
+  @sec-estimation, @sec-high-dim.
+- **Operations research and engineering**: @sec-geometry, @sec-linear-programming,
+  @sec-constraints, @sec-derivative-free, @sec-applications.
+- **Choosing a method for a problem at hand**: this page, then
+  [Choosing an Algorithm](../appendix-choosing-an-algorithm.qmd).

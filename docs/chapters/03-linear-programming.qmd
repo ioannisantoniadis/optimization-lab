@@ -1,0 +1,231 @@
+# Linear Programming {#sec-linear-programming}
+
+The methods of @sec-gradient-methods rely on curvature: a gradient step is sized by it,
+a Newton step is computed from it. A linear objective has none. Its gradient is the same
+vector $c$ everywhere, so "follow the slope" would run forever, and the only thing that
+stops it is a constraint. Linear programs are exactly these problems: a linear objective
+and linear constraints. They model allocation, scheduling, transport and blending
+problems, and they are among the most widely solved optimization problems in practice
+[@dantzig1963linear]. The lack of curvature turns out to make them *easier*, in a
+specific geometric way: the answer is always at a corner, and there are finitely many
+corners.
+
+## The problem
+
+::: {.callout-note title="Definition — Linear program"}
+$$
+\min_{x \in \mathbb{R}^n} \; c^\top x
+\quad \text{subject to} \quad
+A_{\text{ub}}\, x \le b_{\text{ub}}, \quad A_{\text{eq}}\, x = b_{\text{eq}}, \quad x \ge 0 .
+$$
+:::
+
+A maximization becomes a minimization by negating $c$, and a "$\ge$" row becomes "$\le$"
+by negating it, so this form covers every linear program. A running example: a workshop
+makes two products, earning 3 and 5 per unit, and three machines limit production:
+$$
+\max\; 3x_1 + 5x_2 \quad \text{s.t.} \quad
+x_1 \le 4, \quad 2x_2 \le 12, \quad 3x_1 + 2x_2 \le 18, \quad x_1, x_2 \ge 0 .
+$$
+Each inequality is one machine's available hours.
+
+## Why the optimum sits at a vertex
+
+Each constraint $a_i^\top x \le b_i$ keeps one side of a line (a hyperplane, in $n$
+dimensions). The feasible set is the intersection of these half-spaces: a **polyhedron**,
+a region with flat faces and straight edges. It is convex, so by @sec-geometry every
+local minimum of the (linear, hence convex) objective is global.
+
+The objective's level sets $\{x : c^\top x = \text{const}\}$ are parallel lines.
+Minimizing means sliding that line in the direction of $-c$ for as long as it still
+touches the feasible set. The last point of contact is a corner, or, if $c$ happens to
+be perpendicular to an edge, a whole edge that includes two corners.
+
+::: {.callout-tip title="Theorem — Linear programs are solved at vertices"}
+If a linear program has an optimal solution and its feasible set has at least one
+vertex (true for any problem with $x \ge 0$), then at least one optimal solution is a
+vertex of the feasible set.
+:::
+
+*Why.* Take any optimal point $x$ that is not a vertex. Then some direction $d \ne 0$
+keeps $x \pm \tau d$ feasible for small $\tau$. If $c^\top d \ne 0$, one of the two signs
+would improve the objective, contradicting optimality, so $c^\top d = 0$. Move along $d$
+until a new constraint becomes tight. The objective has not changed, the point is still
+optimal, and one more constraint is active. Repeat; after at most $n$ moves, $n$
+independent constraints are tight, which is the definition of a vertex.
+
+This changes the nature of the problem. Instead of searching a continuum, we only need to
+search the vertices, and there are finitely many of them.
+
+## Vertices, algebraically
+
+To search vertices we need to compute them. Add a **slack variable** $s_i \ge 0$ to each
+inequality, $a_i^\top x + s_i = b_i$, so that all constraints read $\bar A z = b$,
+$z \ge 0$, with $m$ equations in $N$ variables ($z$ collects $x$ and the slacks). A
+vertex corresponds to a **basic feasible solution**: choose $m$ of the variables to be
+*basic*, set the other $N - m$ (*nonbasic*) to zero, and solve the $m \times m$ system for
+the basic ones. If the solution is nonnegative, it is a vertex.
+
+In the workshop example, the origin is the basic solution with the three slacks basic
+($s = (4, 12, 18)$, every machine idle) and $x_1 = x_2 = 0$ nonbasic. There are at most
+$\binom{N}{m}$ choices of basis, so trying them all would solve any linear program,
+but that number grows exponentially. The simplex method visits only a short, improving
+sequence of them.
+
+## The simplex method
+
+The simplex method walks from vertex to adjacent vertex (two vertices are adjacent when
+their bases differ in one variable, so they are joined by an edge) and never goes
+uphill.
+
+::: {.callout-note title="Algorithm — The simplex method (one pivot)"}
+At a basic feasible solution with basis matrix $B$ (the columns of $\bar A$ for the basic
+variables) and basic costs $c_B$:
+
+1. **Reduced costs.** For each nonbasic variable $j$, compute
+   $\bar c_j = c_j - c_B^\top B^{-1} \bar a_j$: the rate at which the objective changes per
+   unit of $z_j$ when $z_j$ is increased from zero and the basic variables adjust to keep
+   $\bar A z = b$.
+2. **Optimality test.** If every $\bar c_j \ge 0$, no edge leads downhill: stop, the
+   vertex is optimal.
+3. **Entering variable.** Otherwise pick a nonbasic $j$ with $\bar c_j < 0$.
+4. **Ratio test.** Moving along the edge, the basic variables change at rates
+   $-d$ with $d = B^{-1} \bar a_j$. If $d \le 0$, nothing ever hits zero and the
+   objective decreases without bound: stop, **unbounded**. Otherwise the step is
+   $\theta = \min_{i : d_i > 0} z_{B,i}/d_i$, and the basic variable that attains the
+   minimum is the **leaving variable**: the first constraint that becomes tight.
+5. **Pivot.** Swap the entering and leaving variables in the basis. The new basis is an
+   adjacent vertex with an objective lower by $\theta\,\lvert \bar c_j \rvert$.
+:::
+
+Each pivot is a linear-algebra update on the tableau (the constraint matrix together with
+the objective row), so it is cheap. The walk on the workshop problem:
+
+```{python}
+#| label: fig-lp-polytope
+#| fig-cap: "The workshop problem: the shaded feasible region (one edge per machine constraint plus the two axes) and the sequence of vertices the simplex method visits, each pivot a move along one edge to an adjacent vertex with a better objective, ending at the optimum (star)."
+import numpy as np
+
+from optimlab.backends import scipy_linprog
+from optimlab.optimizers.linear_programming import LinearProgram, simplex
+from optimlab.viz import markdown_table, polytope_figure
+
+# maximize 3x1 + 5x2, written as minimizing its negative
+lp = LinearProgram(name="workshop", c=[-3.0, -5.0],
+                   A_ub=[[1, 0], [0, 2], [3, 2]], b_ub=[4, 12, 18])
+result = simplex(lp)
+fig = polytope_figure(lp, result)
+fig.update_layout(title="The workshop problem")
+fig.show()
+```
+
+```{python}
+#| label: tbl-simplex-walk
+#| tbl-cap: "The vertices visited, in order. Profit (the negated objective) rises at every pivot."
+markdown_table(
+    ["step", "vertex (x₁, x₂)", "profit 3x₁ + 5x₂"],
+    [(k, f"({v[0]:.0f}, {v[1]:.0f})", f"{3 * v[0] + 5 * v[1]:.0f}")
+     for k, v in enumerate(result.vertices)],
+    align="rrr",
+)
+```
+
+The optimum makes `{python} f"{result.x[0]:.0f}"` units of the first product and
+`{python} f"{result.x[1]:.0f}"` of the second, for a profit of
+`{python} f"{-result.objective:.0f}"`. Two of the three machines are fully used there: it
+is the corner where their constraint lines cross.
+
+### Choosing the entering variable: Bland's rule
+
+Step 3 leaves a choice. **Dantzig's rule** takes the most negative reduced cost, the
+steepest edge per unit of the entering variable. On the workshop problem that is $x_2$
+(reduced cost $-5$), and the walk would be $(0,0) \to (0,6) \to (2,6)$: two pivots instead
+of three. The walk above instead follows **Bland's rule** [@bland1977new]: among the
+candidates for entering and for leaving, always take the one with the smallest index.
+
+The reason is **degeneracy**. When more than $n$ constraints pass through the same
+vertex, several bases describe the same point, the ratio test can return $\theta = 0$,
+and a pivot changes the basis without moving. With an arbitrary tie-breaking rule, the
+method can then cycle through the same bases forever. Bland's rule provably never cycles,
+which guarantees termination, at the price of sometimes taking a longer path, as here.
+Production solvers use more elaborate pricing rules with their own anti-cycling
+safeguards.
+
+### Finding a first vertex: two phases
+
+The walk needs a starting vertex. When every constraint is "$\le$" with a nonnegative
+right-hand side, the origin works, with the slacks as the basis. Equality constraints and
+"$\ge$" rows have no such obvious start. **Phase 1** solves an auxiliary problem: add an
+*artificial* variable to each such row, which makes a starting basis trivial, and minimize
+the sum of the artificial variables with the same pivoting rules. If that minimum is
+zero, the final basis is a vertex of the original problem, and **phase 2** optimizes the
+real objective from there. If it is positive, no point satisfies all the constraints.
+
+### When there is no optimum
+
+A linear program can fail in exactly two ways, and the method detects both:
+
+```{python}
+#| label: lp-failures
+# x1 + x2 <= 1 and x1 + x2 >= 3 cannot both hold
+infeasible = LinearProgram(c=[1.0, 1.0], A_ub=[[1, 1], [-1, -1]], b_ub=[1, -3])
+# minimizing -x1 - x2 with only x1 - x2 <= 1: both can grow forever
+unbounded = LinearProgram(c=[-1.0, -1.0], A_ub=[[1.0, -1.0]], b_ub=[1.0])
+status_infeasible = simplex(infeasible).status
+status_unbounded = simplex(unbounded).status
+```
+
+- **Infeasible**: no point satisfies all constraints. Phase 1 ends with a positive sum of
+  artificials. On $x_1 + x_2 \le 1$, $x_1 + x_2 \ge 3$ the method reports
+  "`{python} status_infeasible`".
+- **Unbounded**: the objective decreases forever along some edge. The ratio test finds
+  no positive $d_i$. Minimizing $-x_1 - x_2$ subject only to $x_1 - x_2 \le 1$, it reports
+  "`{python} status_unbounded`".
+
+### How fast is it?
+
+Each pivot costs roughly one update of an $m \times N$ tableau. The number of pivots is
+the real question. In practice it is usually small, often a modest multiple of the
+number of constraints. In the worst case, though, it is not: Klee and Minty built a
+family of slightly squashed cubes on which Dantzig's rule visits all $2^n$ vertices
+[@klee1972good]. Problems with a guaranteed polynomial running time call for
+interior-point methods, which cut through the inside of the polyhedron instead of walking
+its edges; @sec-constraints develops their central idea, the logarithmic barrier.
+
+```{python}
+#| label: lp-oracle
+oracle = scipy_linprog(lp)
+agree = np.allclose(oracle.x, result.x) and np.isclose(oracle.objective, result.objective)
+```
+
+As a cross-check, an independent industrial solver (HiGHS, through SciPy) returns
+the same vertex and objective on the workshop problem
+(agreement: `{python} "yes" if agree else "no"`).
+
+[Implementation: [`optimizers/linear_programming.py`]({{< var src >}}/optimizers/linear_programming.py) ·
+Checked by: [`test_linear_programming.py`]({{< var tests >}}/test_linear_programming.py)
+(against SciPy's HiGHS on 20 random linear programs)]{.impl}
+
+## What these examples cannot show
+
+- **Scale and sparsity.** Real linear programs have thousands to millions of variables
+  with sparse constraint matrices. Solvers never form a dense tableau; they factor the
+  basis matrix and update the factorization, and they presolve the problem to remove
+  redundancy. None of that is visible in two dimensions.
+- **Integer variables.** Many allocation problems need whole units. Requiring integer
+  solutions turns the problem into an integer program, which is hard in general and is
+  solved by branch-and-bound on top of repeated linear programs. This book does not cover
+  it.
+- **Numerical degeneracy.** Degeneracy and ties are the norm in large structured
+  problems, not the exception, and floating-point ties are subtler than exact ones.
+
+## Connections
+
+- **@sec-geometry**: a polyhedron is a convex set and a linear objective is convex, so
+  the vertex the simplex method stops at is a global optimum.
+- **@sec-constraints** gives every linear program a twin, its dual, whose variables are
+  the machines' **shadow prices**: how much more profit one extra hour of each machine
+  would earn. It also develops the barrier idea behind interior-point methods.
+- **@sec-least-squares** moves from a linear objective to a quadratic one, where the
+  optimum usually lies in the interior and the question becomes how sensitive it is to
+  noise.

@@ -63,3 +63,16 @@ def test_spread_of_simplex_shrinks_monotonically_near_the_end():
     bf = get("sphere")
     result = nelder_mead(bf.problem(n_dim=2, seed=1))
     assert result.grad_norm_trajectory[-1] < result.grad_norm_trajectory[0] * 1e-3
+
+
+def test_record_history_stores_each_simplex_and_the_move_that_made_it():
+    problem = get("rosenbrock").problem(x0=np.array([-1.2, 1.0]))
+    plain = nelder_mead(problem, max_iter=60)
+    recorded = nelder_mead(problem, max_iter=60, record_history=True)
+    np.testing.assert_allclose(plain.x, recorded.x)
+    simplices, moves = recorded.history["simplex"], recorded.history["move"]
+    assert len(simplices) == len(moves) + 1 == recorded.n_iter + 1
+    assert set(moves) <= {"reflect", "expand", "contract", "shrink"}
+    for simplex, best in zip(simplices, recorded.trajectory):
+        assert simplex.shape == (3, 2)
+        np.testing.assert_allclose(simplex[0], best)  # vertices are kept sorted best-first

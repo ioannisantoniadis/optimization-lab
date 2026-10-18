@@ -121,7 +121,7 @@ def svd_conditioning_figure(A: ArrayLike, *, dark: bool = False) -> go.Figure:
     fig.update_layout(
         **layout_template(
             dark=dark, title=f"condition number = {result.condition_number:.3g}",
-            xaxis_title="x0", yaxis_title="x1",
+            xaxis_title="x₁", yaxis_title="x₂",
             legend={"y": 1, "yanchor": "top", "x": 1.02, "xanchor": "left"},
             margin={"l": 60, "r": 200, "t": 50, "b": 50},
         ),
@@ -129,6 +129,14 @@ def svd_conditioning_figure(A: ArrayLike, *, dark: bool = False) -> go.Figure:
     fig.update_xaxes(range=[-span, span])
     fig.update_yaxes(range=[-span, span], scaleanchor="x", scaleratio=1)
     return fig
+
+
+_SUBSCRIPTS = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
+
+def _coefficient_names(n: int) -> list[str]:
+    """`x₁ … xₙ`, 1-indexed to match the math in the docs."""
+    return [f"x{i + 1}".translate(_SUBSCRIPTS) for i in range(n)]
 
 
 def _regularization_path_figure(
@@ -171,7 +179,7 @@ def ridge_path_figure(
 
     A = np.asarray(A, dtype=float)
     alphas = np.asarray(alphas, dtype=float)
-    names = feature_names or [f"x{i}" for i in range(A.shape[1])]
+    names = feature_names or _coefficient_names(A.shape[1])
     coefficients = np.array([ridge_regression(A, b, alpha).x for alpha in alphas])
     return _regularization_path_figure(coefficients, alphas, names, "Ridge regularization path", dark=dark)
 
@@ -195,7 +203,7 @@ def lasso_path_figure(
     A = np.asarray(A, dtype=float)
     b = np.asarray(b, dtype=float)
     alphas = np.asarray(alphas, dtype=float)
-    names = feature_names or [f"x{i}" for i in range(A.shape[1])]
+    names = feature_names or _coefficient_names(A.shape[1])
     L = np.linalg.eigvalsh(A.T @ A).max()
 
     coefficients = []
@@ -213,3 +221,72 @@ def lasso_path_figure(
     return _regularization_path_figure(
         np.array(coefficients), alphas, names, "LASSO regularization path", dark=dark
     )
+
+
+def svd_steps_figure(A: ArrayLike, *, dark: bool = False) -> go.Figure:
+    """`A = U Σ Vᵀ` as three successive moves, one panel each: the unit circle, then
+    after `Vᵀ` (a rotation/reflection — the circle is unchanged, but `A`'s right singular
+    vectors now lie on the coordinate axes), then after `Σ` (each axis stretched by its
+    singular value, giving an axis-aligned ellipse), then after `U` (rotated into place:
+    exactly `A` applied to the circle). The right singular vectors `v_i` are drawn as
+    arrows and followed through every stage, so the reader can see that `A v_i = σ_i u_i`.
+    """
+    from plotly.subplots import make_subplots
+
+    A = np.asarray(A, dtype=float)
+    if A.shape != (2, 2):
+        raise ValueError(f"svd_steps_figure needs a 2x2 matrix, got shape {A.shape}")
+
+    result = svd(A)
+    U, s, Vt = result.U, result.s, result.Vt
+    theta = np.linspace(0, 2 * np.pi, 200)
+    circle = np.stack([np.cos(theta), np.sin(theta)])
+    stages = [
+        ("x", np.eye(2)),
+        ("Vᵀx  (rotate)", Vt),
+        ("ΣVᵀx  (stretch)", np.diag(s) @ Vt),
+        ("UΣVᵀx = Ax  (rotate)", U @ np.diag(s) @ Vt),
+    ]
+    colors = contrasting_categorical(dark=dark)
+    span = max(1.2, float(s[0]) * 1.15)
+
+    fig = make_subplots(rows=1, cols=4, subplot_titles=[label for label, _ in stages],
+                        horizontal_spacing=0.04)
+    for col, (_label, M) in enumerate(stages, start=1):
+        shape = M @ circle
+        fig.add_trace(
+            go.Scatter(
+                x=shape[0], y=shape[1], mode="lines", showlegend=False,
+                line={"color": "#898781", "width": 2}, fill="toself",
+                fillcolor="rgba(137,135,129,0.10)", hoverinfo="skip",
+            ),
+            row=1, col=col,
+        )
+        for i in range(2):
+            v = M @ Vt[i]
+            fig.add_trace(
+                go.Scatter(
+                    x=[0, v[0]], y=[0, v[1]], mode="lines+markers",
+                    name=f"v{i + 1} (σ{i + 1} = {s[i]:.3g})", legendgroup=f"v{i}",
+                    showlegend=col == 1,
+                    line={"color": colors[i], "width": 3},
+                    marker={"size": [0, 9], "color": colors[i]},
+                    hovertemplate=f"image of v{i + 1}<br>(%{{x:.3f}}, %{{y:.3f}})<extra></extra>",
+                ),
+                row=1, col=col,
+            )
+        fig.update_xaxes(range=[-span, span], row=1, col=col, showticklabels=col == 1)
+        fig.update_yaxes(range=[-span, span], row=1, col=col, showticklabels=col == 1,
+                         scaleanchor=f"x{'' if col == 1 else col}", scaleratio=1)
+
+    fig.update_layout(
+        **layout_template(
+            dark=dark, height=300,
+            legend={"orientation": "h", "y": -0.12, "x": 0.5, "xanchor": "center"},
+            margin={"l": 40, "r": 20, "t": 50, "b": 40},
+        )
+    )
+    chrome_grid = layout_template(dark=dark)["xaxis"]
+    fig.update_xaxes(gridcolor=chrome_grid["gridcolor"], zerolinecolor=chrome_grid["zerolinecolor"])
+    fig.update_yaxes(gridcolor=chrome_grid["gridcolor"], zerolinecolor=chrome_grid["zerolinecolor"])
+    return fig

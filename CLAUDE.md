@@ -11,11 +11,23 @@ problem, a solver-arena comparison harness, cross-domain applications
 executed from the real code at render time.
 
 - **Docs site**: https://ioannisantoniadis.github.io/optimization-lab/ (a
-  9-chapter Quarto book, auto-deployed to GitHub Pages on push to `main` via
+  Quarto book: a map, 9 chapters in 4 parts, and 4 appendices, auto-deployed to GitHub Pages on push to `main` via
   `.github/workflows/docs.yml`, only when `docs/**`, `src/optimlab/**`,
   `pyproject.toml`, or `uv.lock` changed)
 - **CI**: `.github/workflows/ci.yml` runs `ruff check .` + `pytest` on every
   push to `main` and every PR.
+
+**The book's writing rules live in `CONVENTIONS.md` — read it before editing anything
+under `docs/`.** In short: the book teaches optimization, not the package. Prose names
+algorithms ("BFGS"), never functions (`bfgs`); the package appears only in the one
+`[Implementation: … · Checked by: …]{.impl}` line closing each method section and in
+`docs/appendix-the-code.qmd`; no roadmap/phase references, no "this repo", no test
+paths in prose; code cells are folded by default; every number in prose comes from an
+inline `{python}` expression or a `markdown_table` cell, never typed by hand; chapters
+cross-reference by Quarto ID (`@sec-gradient-methods`), never by typed number. Every
+caption claim (which minimum a solver reached, whether a curve is monotone, whether a
+run converged) is checked against the actual run before it is kept — the 2026-10 book
+rewrite found several inherited captions that were wrong.
 
 **This repo already documents itself extensively — read before duplicating.**
 Two files carry almost all of the "why," not just "what":
@@ -61,7 +73,8 @@ src/optimlab/
                     the `backends` extra)
   problems/         Cross-domain problems: economics (Markowitz), sociology (fair
                     allocation) — physics/ML applications live in optimizers/control instead
-docs/               Quarto book — theory + write-ups, figures executed from real code
+docs/               Quarto book — chapters/00-map … 09-applications, appendix-*.qmd;
+                    figures and numbers executed from real code at render time
 notebooks/marimo/   8 reactive notebooks, one per phase
 benchmarks/         Wall-clock timing harness + generated BENCHMARKS.md
 tests/              One test file per solver/module, pytest
@@ -205,8 +218,11 @@ uv run ruff check .                            # lint (line-length 100, py311 ta
 
 ## Current status
 
-All 8 roadmap phases are complete (`ROADMAP.md`). There is no in-flight
-"next phase" recorded as of this writing — before starting new algorithmic
+All 8 roadmap phases are complete (`ROADMAP.md`), followed by a book rewrite
+(ROADMAP "Phase 9", 2026-10) that restructured `docs/` into the sibling books' format
+(map, parts, per-method template, appendices) and deepened every algorithm's
+explanation. The book is planned as Part II of `objectives-book` (see that repo's
+SPEC §5). There is no in-flight next phase recorded as of this writing — before starting new algorithmic
 work, check `ROADMAP.md`'s end and the git log for anything more recent than
 what's summarized here, and check with the owner what's actually wanted
 next (new algorithms, more cross-domain problems, or refinement of what

@@ -127,3 +127,25 @@ def test_residual_trends_toward_zero():
     assert residuals[0] == 0.0
     assert residuals[1] > 1e-6  # real disagreement appears after the first real step
     assert residuals[-1] < 1e-6  # and is resolved by the end
+
+
+def test_record_history_exposes_the_transient_primal_dip_separately():
+    """The same rho=50 instance as above, with both residuals recorded: the primal
+    residual alone is below tol at iteration 5 while the dual residual is not, which is
+    exactly the case a primal-only stopping rule gets wrong."""
+    rng = np.random.default_rng(0)
+    m, n = 50, 20
+    A = rng.standard_normal((m, n))
+    x_true = np.zeros(n)
+    x_true[[2, 5, 9]] = [3.0, -2.0, 1.5]
+    b = A @ x_true + 0.01 * rng.standard_normal(m)
+
+    problem = _lasso_admm_problem(A, b, 1.0, rho=50.0, x0=np.zeros(n))
+    plain = admm(problem, rho=50.0, max_iter=5000, tol=1e-6)
+    recorded = admm(problem, rho=50.0, max_iter=5000, tol=1e-6, record_history=True)
+    np.testing.assert_allclose(plain.x, recorded.x)
+    primal = np.asarray(recorded.history["primal_residual"])
+    dual = np.asarray(recorded.history["dual_residual"])
+    assert len(primal) == len(dual) == recorded.n_iter
+    assert primal[4] < 1e-6 and dual[4] > 1e-6  # iteration 5 (1-indexed)
+    np.testing.assert_allclose(np.maximum(primal, dual), recorded.grad_norm_trajectory[1:])

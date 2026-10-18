@@ -185,6 +185,10 @@ class OptimizeResult:
     trajectory: list[ArrayLike] = field(default_factory=list)
     f_trajectory: list[float] = field(default_factory=list)
     grad_norm_trajectory: list[float] = field(default_factory=list)
+    #: Optional solver-specific per-iteration records a solver only fills when asked
+    #: (e.g. `particle_swarm(..., record_history=True)` stores every iteration's whole
+    #: swarm under ``"population"``). Empty by default, so it costs nothing otherwise.
+    history: dict[str, list[Any]] = field(default_factory=dict)
 
     def __repr__(self) -> str:  # pragma: no cover - cosmetic
         status = "converged" if self.converged else "did NOT converge"

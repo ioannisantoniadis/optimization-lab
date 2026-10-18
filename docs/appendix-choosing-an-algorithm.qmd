@@ -1,0 +1,103 @@
+# Choosing an Algorithm {#sec-choosing}
+
+This appendix collects the methods of the book in one place: what each needs, what it
+promises, and what an iteration costs. It then runs every general-purpose method in the
+book on the same problem.
+
+## The methods at a glance
+
+In the cost column, $n$ is the number of variables, $m$ the number of constraints or
+data rows, $N$ the population size, and $k$ the number of evaluations so far.
+
+| method | uses | best suited to | promises | cost per iteration | chapter |
+|---|---|---|---|---|---|
+| gradient descent | $f$, $\nabla f$ | smooth, large | convex: global min, rate $\propto\kappa$ | $O(n)$ + gradient | @sec-gradient-methods |
+| heavy ball, Nesterov | $f$, $\nabla f$ | smooth, ill-conditioned | convex: rate $\propto\sqrt\kappa$ | $O(n)$ + gradient | @sec-gradient-methods |
+| Adagrad, RMSProp, Adam | $\nabla f$ | noisy gradients, badly scaled coordinates | designed for stochastic training, not fast deterministic convergence | $O(n)$ + gradient | @sec-gradient-methods |
+| Newton (damped) | $f$, $\nabla f$, $\nabla^2 f$ | smooth, small $n$ | quadratic convergence near a minimum | $O(n^3)$ + Hessian | @sec-gradient-methods |
+| BFGS | $f$, $\nabla f$ | smooth, moderate $n$ | superlinear convergence near a minimum | $O(n^2)$ + gradient | @sec-gradient-methods |
+| L-BFGS | $f$, $\nabla f$ | smooth, large $n$ | fast in practice | $O(mn)$ + gradient | @sec-gradient-methods |
+| conjugate gradient | products $Av$ | linear systems, quadratics | exact in $n$ steps; rate $\propto\sqrt\kappa$ | one product $Av$ | @sec-gradient-methods |
+| simplex | $c$, $A$, $b$ | linear programs | exact optimum, or proof of none | one pivot | @sec-linear-programming |
+| SVD least squares, ridge | $A$, $b$ | linear least squares | exact (minimum-norm) solution | one SVD, $O(mn^2)$ | @sec-least-squares |
+| proximal gradient | $\nabla f$, $\operatorname{prox}_h$ | smooth + simple nonsmooth | convex: rate $O(1/k)$ | gradient + prox | @sec-least-squares |
+| projected gradient | $\nabla f$, projection | simple constraints | convex: global min | gradient + projection | @sec-least-squares |
+| Gauss–Newton | residuals, Jacobian | nonlinear least squares | fast near a good fit | one linear LS solve | @sec-least-squares |
+| KKT system | $Q$, $q$, $C$, $d$ | equality-constrained QP | exact solution | one linear solve | @sec-constraints |
+| barrier method | $f$, $g_i$ and derivatives | convex, inequality-constrained | global min within gap $m/t$ | Newton steps | @sec-constraints |
+| ADMM | $\operatorname{prox}_f$, $\operatorname{prox}_h$ | sums of simple pieces | convex: converges for any $\rho$ | two proxes | @sec-constraints |
+| Nelder–Mead | $f$ | small, no derivatives | none in general | 1–$n$+2 evaluations | @sec-derivative-free |
+| simulated annealing | $f$ | multimodal, cheap $f$ | none in a finite budget | 1 evaluation | @sec-derivative-free |
+| genetic algorithm | $f$, a box | multimodal, cheap $f$ | none | $N$ evaluations | @sec-derivative-free |
+| particle swarm | $f$, a box | multimodal, cheap $f$ | none | $N$ evaluations | @sec-derivative-free |
+| Bayesian optimization | $f$, a box | expensive $f$, small $n$ | none; sample-efficient in practice | 1 evaluation + $O(k^3)$ | @sec-derivative-free |
+| EM | a latent-variable model | mixtures, missing data | likelihood never decreases | closed-form E and M steps | @sec-estimation |
+| Metropolis–Hastings | $\tilde p$ up to a constant | sampling posteriors | correct distribution in the limit | 1 evaluation | @sec-estimation |
+
+: The methods of the book. {#tbl-methods}
+
+A few rules of thumb follow from the table and the chapters behind it:
+
+- **Use structure first.** A linear program, a least-squares problem or an
+  equality-constrained quadratic has an exact method that beats any general one.
+- **If gradients are available and the problem is smooth**, L-BFGS is a strong default
+  for deterministic problems; gradient methods with momentum or Adam are the default
+  when gradients are noisy or $n$ is huge.
+- **If there are constraints**, prefer a formulation that satisfies them by
+  construction (@sec-applications shows how much this can matter), then a method made
+  for them: projection for boxes, the barrier method or ADMM for general convex
+  constraints.
+- **If there are no usable gradients**, Nelder–Mead for small local problems, Bayesian
+  optimization when evaluations are expensive, population methods or annealing when they
+  are cheap and the landscape is multimodal, and a local method afterward to polish the
+  result.
+
+## Every method on one problem
+
+Most methods in the book share one calling convention (an objective and a starting
+point in, a result out), so they can all be run on the same problem and compared
+directly. On Himmelblau's function from the same starting point:
+
+```{python}
+#| label: fig-arena
+#| fig-cap: "Final objective value reached by every general-purpose method in the book on Himmelblau's function (minimum 0), from the start (-4, 4), with each method's default settings, best first, on a log scale. Color shows whether each method's own stopping test was met. Curvature methods reach machine precision; the population methods stop on an iteration budget but still land within a small distance of a minimum."
+import numpy as np
+
+from optimlab.arena import run_arena
+from optimlab.landscapes import get
+from optimlab.optimizers import ALL_SOLVERS
+from optimlab.viz import arena_figure, markdown_table
+
+readable = {
+    "gradient_descent": "gradient descent", "heavy_ball": "heavy ball",
+    "nesterov": "Nesterov", "adagrad": "Adagrad", "rmsprop": "RMSProp", "adam": "Adam",
+    "newton": "Newton", "bfgs": "BFGS", "lbfgs": "L-BFGS", "nelder_mead": "Nelder–Mead",
+    "simulated_annealing": "simulated annealing", "genetic_algorithm": "genetic algorithm",
+    "particle_swarm": "particle swarm", "bayesian_optimize": "Bayesian optimization",
+}
+solvers = {readable[key]: fn for key, fn in ALL_SOLVERS.items()}
+report = run_arena(get("himmelblau").problem(x0=np.array([-4.0, 4.0])), solvers=solvers)
+fig = arena_figure(report)
+fig.update_layout(title="Every method on Himmelblau's function", xaxis_title="")
+fig.show()
+```
+
+```{python}
+#| label: tbl-arena
+#| tbl-cap: "The same runs as a table, best first. Iterations are not comparable across rows: one iteration of a population method evaluates the whole population, and one of Newton's method solves a linear system."
+rows = sorted(report.summary_rows(), key=lambda r: (r["f"] is None, r["f"]))
+markdown_table(
+    ["method", "final f", "iterations", "own stopping test met"],
+    [(r["name"], f"{r['f']:.1e}", r["n_iter"], "yes" if r["converged"] else "no")
+     for r in rows if r["f"] is not None],
+    align="lrrl",
+)
+```
+
+A comparison like this answers a narrow question: how each method does on one problem,
+from one start, with default settings. It says little about other problems; changing the
+start, the settings or the landscape reorders the table. It is most useful as a first
+look at a new problem, before tuning the most promising candidates.
+
+[Implementation: [`arena.py`]({{< var src >}}/arena.py) ·
+Checked by: [`test_arena.py`]({{< var tests >}}/test_arena.py)]{.impl}
