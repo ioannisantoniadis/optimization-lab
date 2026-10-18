@@ -41,3 +41,17 @@ def test_is_reproducible_given_the_same_seed():
     result_a = particle_swarm(bf.problem(n_dim=2, seed=0), seed=42, max_iter=50)
     result_b = particle_swarm(bf.problem(n_dim=2, seed=0), seed=42, max_iter=50)
     np.testing.assert_allclose(result_a.x, result_b.x)
+
+
+def test_record_history_stores_every_swarm_without_changing_the_result():
+    bf = get("rastrigin")
+    plain = particle_swarm(bf.problem(n_dim=2, seed=0), seed=5, max_iter=30)
+    recorded = particle_swarm(bf.problem(n_dim=2, seed=0), seed=5, max_iter=30, record_history=True)
+    np.testing.assert_allclose(plain.x, recorded.x)
+    assert plain.history == {}
+    swarms = recorded.history["population"]
+    assert len(swarms) == recorded.n_iter + 1
+    assert all(s.shape == (40, 2) for s in swarms)
+    # the recorded global best is always one of the points some particle actually visited
+    visited = np.vstack(swarms)
+    assert np.min(np.linalg.norm(visited - recorded.x, axis=1)) < 1e-12

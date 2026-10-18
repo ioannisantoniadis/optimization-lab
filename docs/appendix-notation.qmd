@@ -1,0 +1,83 @@
+# Notation {#sec-notation}
+
+Every chapter uses the symbols on this page. A symbol listed as chapter-local means
+something else in one chapter, where the text says so.
+
+## Variables, objectives and derivatives
+
+| symbol | meaning |
+|---|---|
+| $x \in \mathbb{R}^n$ | the decision variable; $n$ is its dimension |
+| $f(x)$ | the objective, always **minimized** (maximize $g$ by minimizing $-g$) |
+| $x^\star$, $f^\star$ | a minimizer and the optimal value |
+| $x_k$ | the iterate at iteration $k$ |
+| $\nabla f(x)$, $\nabla^2 f(x)$ | gradient and Hessian |
+| $\lambda_i$ | an eigenvalue (of a Hessian, @sec-geometry, @sec-high-dim) |
+| $\mu$, $L$ | strong-convexity and smoothness constants: $\mu I \preceq \nabla^2 f \preceq LI$ |
+| $\kappa$ | condition number: $L/\mu$ for a function, $\sigma_1/\sigma_n$ for a matrix |
+| $A = U\Sigma V^\top$ | singular value decomposition; $\sigma_i$ the singular values, $A^{+}$ the pseudoinverse |
+
+## Steps and methods
+
+| symbol | meaning |
+|---|---|
+| $d_k$, $\eta$ or $\eta_k$ | search direction and step size (learning rate) |
+| $c_1$, $c_2$, $\tau$ | Armijo and Wolfe constants; backtracking shrink factor |
+| $\beta$, $v_k$ | momentum coefficient and velocity |
+| $m_k$, $s_k$, $\beta_1$, $\beta_2$, $\epsilon$ | Adam's moment estimates, decay rates and stabilizer |
+| $B_k$, $M_k$ | Hessian and inverse-Hessian approximations (quasi-Newton) |
+| $s_k$, $y_k$ | in BFGS: step $x_{k+1} - x_k$ and gradient change (chapter-local) |
+| $r_k$, $p_k$ | in conjugate gradient: residual $b - Ax_k$ and search direction |
+| $T$, $c$ | temperature and cooling factor (simulated annealing) |
+| $N$, $\omega$, $c_1$, $c_2$ | population size; particle-swarm inertia, cognitive and social weights |
+| $\mu(x)$, $s(x)$, $K(x, x')$, $\ell_K$ | Gaussian-process mean, standard deviation, kernel and length scale |
+
+## Least squares and regularization
+
+| symbol | meaning |
+|---|---|
+| $A \in \mathbb{R}^{m \times n}$, $b$ | design matrix and observations; $m$ data rows |
+| $\alpha$ | regularization strength (ridge, lasso, deblurring) |
+| $\operatorname{prox}_{\eta h}$ | proximal operator of $\eta h$ |
+| $\Pi_C$ | Euclidean projection onto a set $C$ |
+| $r(x)$, $J(x)$ | residual vector and its Jacobian (nonlinear least squares) |
+
+## Constraints and duality
+
+| symbol | meaning |
+|---|---|
+| $g_i(x) \le 0$, $Cx = d$ | inequality and linear equality constraints; $m$ inequalities |
+| $\mathcal{L}(x, \lambda, \nu)$ | the Lagrangian (always the Lagrangian in this book) |
+| $\lambda_i \ge 0$, $\nu$ | multipliers for inequalities and equalities |
+| $q(\lambda, \nu)$ | the dual function |
+| $t$ | barrier parameter; the duality gap on the central path is $m/t$ |
+| $f$, $h$, $z$, $u$, $\rho$ | ADMM: the two pieces, the split copy, the scaled multiplier, the penalty |
+| $c$, $A$, $b$, $y$ | linear program: costs, constraint matrix and limits; dual variables |
+
+## Statistics
+
+| symbol | meaning |
+|---|---|
+| $\theta$ | model parameters (@sec-estimation, @sec-high-dim) |
+| $\mathcal{D}$ | the observed data |
+| $p(\mathcal{D} \mid \theta)$, $p(\theta)$, $p(\theta \mid \mathcal{D})$ | likelihood, prior, posterior |
+| $\tilde p$ | an unnormalized density |
+| $\mathcal{N}(\mu, \sigma^2)$ | Gaussian distribution (here $\mu$ is a mean, chapter-local) |
+| $\pi_k$, $\mu_k$, $\Sigma_k$, $\gamma_{ik}$ | mixture weights, means, covariances and responsibilities (EM) |
+
+## Control
+
+| symbol | meaning |
+|---|---|
+| $x_k$, $u_k$ | state and control at step $k$ (@sec-applications; here $x$ is a state) |
+| $A$, $B$, $Q$, $R$, $Q_f$ | linear dynamics and quadratic cost matrices |
+| $P_k$, $K_k$ | Riccati cost-to-go matrix and feedback gain |
+| $V(s)$, $r(s, a)$, $\gamma$ | value function, reward and discount factor |
+
+## Conventions shared with the companion books
+
+The companion book on loss functions writes $\lambda$ for a regularization strength and
+$\mathcal{L}$ for a likelihood. In this book, $\lambda$ is a Lagrange multiplier or an
+eigenvalue, the regularization strength is $\alpha$ (matching the code), and
+$\mathcal{L}$ is the Lagrangian; likelihoods are always written out as
+$p(\mathcal{D} \mid \theta)$.

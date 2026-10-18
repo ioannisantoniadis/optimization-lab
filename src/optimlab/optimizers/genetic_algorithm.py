@@ -25,6 +25,7 @@ def genetic_algorithm(
     mutation_rate: float = 0.2,
     tol: float = 1e-10,
     seed: int = 0,
+    record_history: bool = False,
 ) -> OptimizeResult:
     """Each generation: rank the population by `f`, keep the top `elite_fraction`
     unchanged, then fill the rest by picking two parents (tournament selection — draw 3
@@ -37,6 +38,9 @@ def genetic_algorithm(
     `bounds` defaults to `problem.domain` (set on every `optimlab.landscapes` benchmark)
     since a population needs a region to be initialized *over*, not just a starting
     point — pass it explicitly for a `Problem` with no `domain` set.
+
+    `record_history=True` also stores every generation's full population (sorted
+    best-first, initial population first) in `result.history["population"]`.
     """
     if bounds is None:
         if problem.domain is None:
@@ -58,6 +62,7 @@ def genetic_algorithm(
 
     x_hist, f_hist, g_hist = [population[0].copy()], [float(fitness[0])], [float(fitness.std())]
     converged = g_hist[0] < tol
+    population_hist = [population.copy()] if record_history else None
 
     def tournament_pick() -> ArrayLike:
         contenders = rng.integers(0, population_size, size=3)
@@ -85,10 +90,15 @@ def genetic_algorithm(
         x_hist.append(population[0].copy())
         f_hist.append(float(fitness[0]))
         g_hist.append(float(fitness.std()))
+        if population_hist is not None:
+            population_hist.append(population.copy())
         if g_hist[-1] < tol:
             converged = True
 
-    return track_iterations(
+    result = track_iterations(
         x_hist, f_hist, g_hist, converged=converged, solver_name="genetic_algorithm",
         message="population converged (fitness std below tol)" if converged else "max_generations reached",
     )
+    if population_hist is not None:
+        result.history["population"] = population_hist
+    return result

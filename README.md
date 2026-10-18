@@ -1,6 +1,6 @@
 # optimization-lab
 
-![optimization-lab — the nine docs chapters, from foundations to the cross-domain solver arena](docs/images/social-preview.png)
+![optimization-lab — the nine chapters of the book, from the geometry of an objective to applications](docs/images/social-preview.png)
 
 From-scratch implementations of core optimization algorithms, plus tooling for
 comparing solvers, visualizing landscapes, and applying them to problems across
@@ -12,18 +12,20 @@ domains (physics, economics, machine learning).
 
 ## Contents
 
-Nine docs chapters, each executing real `optimlab` code at render time (figures
-regenerated from the actual solvers, not hand-copied images):
+A book in nine chapters on how optimization algorithms work and why, with every figure
+and number computed at render time by the from-scratch implementations in this repo:
 
-1. [Foundations: Convexity, Gradients, and the Gradient-Based Solver Zoo](https://ioannisantoniadis.github.io/optimization-lab/chapters/01-foundations.html)
-2. [Linear Programming: Vertices, Not Slopes](https://ioannisantoniadis.github.io/optimization-lab/chapters/02-linear-programming.html)
-3. [Least Squares: SVD, Conditioning, and Regularization](https://ioannisantoniadis.github.io/optimization-lab/chapters/03-least-squares.html)
-4. [Nonsmooth and Global Optimization: When There's No Slope to Follow](https://ioannisantoniadis.github.io/optimization-lab/chapters/04-nonsmooth-and-global-optimization.html)
-5. [Constraints and Duality: Where the Boundary Does the Work](https://ioannisantoniadis.github.io/optimization-lab/chapters/05-constraints-and-duality.html)
-6. [Bayesian Modeling and Estimation: The Objective Comes From Data](https://ioannisantoniadis.github.io/optimization-lab/chapters/06-bayesian-modeling-and-estimation.html)
-7. [High-Dimensional Non-Convexity: Why Gradient Descent Works Anyway](https://ioannisantoniadis.github.io/optimization-lab/chapters/07-high-dimensional-non-convexity.html)
-8. [Domain Applications: Inverse Problems, Control, and Machine Learning](https://ioannisantoniadis.github.io/optimization-lab/chapters/08-domain-applications.html)
-9. [Cross-Domain Problems and the Solver Arena: The Whole Repo, at Once](https://ioannisantoniadis.github.io/optimization-lab/chapters/09-cross-domain-problems-and-the-solver-arena.html)
+1. [The Geometry of an Objective](https://ioannisantoniadis.github.io/optimization-lab/chapters/01-the-geometry-of-an-objective.html) — slope, curvature, conditioning, the SVD, convexity
+2. [Gradient Methods](https://ioannisantoniadis.github.io/optimization-lab/chapters/02-gradient-methods.html) — gradient descent, line search, momentum, Adam, Newton, BFGS, conjugate gradient
+3. [Linear Programming](https://ioannisantoniadis.github.io/optimization-lab/chapters/03-linear-programming.html) — vertices and the simplex method
+4. [Least Squares and Regularization](https://ioannisantoniadis.github.io/optimization-lab/chapters/04-least-squares-and-regularization.html) — the pseudoinverse, ridge, the lasso and proximal gradient, Gauss–Newton
+5. [Constraints and Duality](https://ioannisantoniadis.github.io/optimization-lab/chapters/05-constraints-and-duality.html) — KKT, duality and shadow prices, the barrier method, ADMM, calculus of variations
+6. [Derivative-Free and Global Search](https://ioannisantoniadis.github.io/optimization-lab/chapters/06-derivative-free-and-global-search.html) — Nelder–Mead, simulated annealing, genetic algorithms, particle swarm, Bayesian optimization
+7. [Estimation as Optimization](https://ioannisantoniadis.github.io/optimization-lab/chapters/07-estimation-as-optimization.html) — MLE, MAP, Laplace, MCMC, EM
+8. [High-Dimensional Landscapes](https://ioannisantoniadis.github.io/optimization-lab/chapters/08-high-dimensional-landscapes.html) — saddles, Hessian spectra, loss slices, mode connectivity, the NTK
+9. [Applications](https://ioannisantoniadis.github.io/optimization-lab/chapters/09-applications.html) — imaging, system identification, control, ML, portfolios, fair allocation
+
+The book's chapters follow the template in [`CONVENTIONS.md`](CONVENTIONS.md).
 
 Plus, outside the docs site: a [solver arena](src/optimlab/arena.py) that runs every
 solver against any problem and reports a standardized comparison, eight
@@ -150,7 +152,8 @@ Rendered outputs are cached in `docs/_freeze/` (`freeze: auto`): a chapter re-ex
 only when its own `.qmd` changes, so after changing `src/optimlab/`, re-render the
 affected chapters (or delete `docs/_freeze/` for a full re-execution) and commit the
 refreshed `_freeze/`. The `Check frozen docs outputs` workflow re-executes every chapter on
-`src/` changes and weekly, and fails if any printed output no longer matches. This needs the [Quarto CLI](https://quarto.org/docs/get-started/)
+`src/` changes and weekly, and fails if any computed text (printed output, tables, inline
+numbers) no longer matches. This needs the [Quarto CLI](https://quarto.org/docs/get-started/)
 installed separately (it isn't a Python package):
 
 ```bash

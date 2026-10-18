@@ -1,0 +1,38 @@
+# Further Reading {#sec-further-reading}
+
+Short and annotated. The chapters cite everything they use; these are the sources most
+worth reading in full.
+
+## Textbooks
+
+- Jorge Nocedal and Stephen Wright, *Numerical Optimization* [@nocedal2006numerical]:
+  the standard reference for gradient, Newton, quasi-Newton, conjugate-gradient and
+  constrained methods, with proofs and practical advice. The source for most of
+  @sec-gradient-methods.
+- Stephen Boyd and Lieven Vandenberghe, *Convex Optimization* [@boyd2004convex]:
+  convexity, duality and interior-point methods, with many modeling examples. Free
+  online. The source for most of @sec-constraints.
+- Steven Brunton, *Optimization Bootcamp* [@brunton2026optimization]: a lecture series
+  covering much of this book's ground with an applied, visual emphasis; it was the
+  starting point for this project.
+- Christopher Bishop, *Pattern Recognition and Machine Learning* [@bishop2006pattern]:
+  maximum likelihood, the Laplace approximation and EM, as used in @sec-estimation.
+- Carl Rasmussen and Christopher Williams, *Gaussian Processes for Machine Learning*
+  [@rasmussen2006gaussian]: the surrogate model behind Bayesian optimization.
+- George Dantzig, *Linear Programming and Extensions* [@dantzig1963linear]: the origin of
+  the simplex method, by its inventor.
+
+## Papers worth reading in full
+
+- Stephen Boyd and coauthors on ADMM [@boyd2011distributed]: a long, readable survey of
+  splitting methods and their applications.
+- Amir Beck and Marc Teboulle on FISTA [@beck2009fast]: proximal gradient and its
+  accelerated version, with clear proofs.
+- Donald Jones, Matthias Schonlau and William Welch on efficient global optimization
+  [@jones1998efficient]: the paper that made Bayesian optimization with expected
+  improvement standard.
+- Yann Dauphin and coauthors on saddle points [@dauphin2014identifying], and Hao Li and
+  coauthors on visualizing loss landscapes [@li2018visualizing]: two entry points to the
+  questions of @sec-high-dim.
+- Arthur Jacot, Franck Gabriel and Clément Hongler on the neural tangent kernel
+  [@jacot2018neural]: why very wide networks train like linear models.

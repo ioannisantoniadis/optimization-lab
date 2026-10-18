@@ -23,3 +23,13 @@ iframe.marimo-embed {
   border: 1px solid #e1e0d9;
   border-radius: 6px;
 }
+
+// The one "Implementation · Checked by" line that closes each method section
+// (CONVENTIONS.md): present for readers who want the code, visually recessive for
+// everyone else.
+.impl {
+  display: block;
+  color: #52514e;
+  font-size: 0.85em;
+  margin-top: -0.25rem;
+}

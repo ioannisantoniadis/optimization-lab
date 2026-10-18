@@ -1,13 +1,18 @@
 project:
   type: book
   output-dir: _site
+  # Plotly injects its own MathJax 2 next to every figure, which races Quarto's
+  # MathJax 4 and can leave all math unrendered; see the script's docstring.
+  post-render: ../scripts/strip_plotly_mathjax.py
 
 book:
   title: "optimization-lab"
-  subtitle: "A living lab for applied mathematical optimization"
+  subtitle: "Applied mathematical optimization, from first principles"
   description: >-
-    From-scratch algorithms, real solver comparisons, cross-domain problems, and
-    intuition for what a million-parameter non-convex loss surface actually looks like.
+    How optimization algorithms work and why: the geometry of an objective, gradient and
+    curvature methods, linear programs, least squares, constraints and duality,
+    derivative-free search, estimation, and high-dimensional non-convex landscapes, with
+    every figure computed from a from-scratch implementation.
   site-url: "https://ioannisantoniadis.github.io/optimization-lab/"
   repo-url: "https://github.com/ioannisantoniadis/optimization-lab"
   repo-actions: [edit, issue]
@@ -21,17 +26,32 @@ book:
     right: "Rendered with [Quarto](https://quarto.org)."
   chapters:
     - index.qmd
-    - chapters/01-foundations.qmd
-    - chapters/02-linear-programming.qmd
-    - chapters/03-least-squares.qmd
-    - chapters/04-nonsmooth-and-global-optimization.qmd
-    - chapters/05-constraints-and-duality.qmd
-    - chapters/06-bayesian-modeling-and-estimation.qmd
-    - chapters/07-high-dimensional-non-convexity.qmd
-    - chapters/08-domain-applications.qmd
-    - chapters/09-cross-domain-problems-and-the-solver-arena.qmd
+    - chapters/00-map.qmd
+    - part: "I. Foundations"
+      chapters:
+        - chapters/01-the-geometry-of-an-objective.qmd
+        - chapters/02-gradient-methods.qmd
+    - part: "II. Convex workhorses"
+      chapters:
+        - chapters/03-linear-programming.qmd
+        - chapters/04-least-squares-and-regularization.qmd
+        - chapters/05-constraints-and-duality.qmd
+    - part: "III. Beyond convex and smooth"
+      chapters:
+        - chapters/06-derivative-free-and-global-search.qmd
+        - chapters/07-estimation-as-optimization.qmd
+        - chapters/08-high-dimensional-landscapes.qmd
+    - part: "IV. Applications"
+      chapters:
+        - chapters/09-applications.qmd
+  appendices:
+    - appendix-choosing-an-algorithm.qmd
+    - appendix-notation.qmd
+    - appendix-the-code.qmd
+    - appendix-further-reading.qmd
   navbar:
     background: light
+  page-navigation: true
 
 format:
   html:
@@ -41,7 +61,8 @@ format:
     toc: true
     number-sections: true
     number-depth: 2
-    code-fold: show
+    code-fold: true
+    code-summary: "Show the code"
     code-tools: true
     fig-align: center
     smooth-scroll: true

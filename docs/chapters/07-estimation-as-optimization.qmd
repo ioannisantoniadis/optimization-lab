@@ -1,0 +1,429 @@
+# Estimation as Optimization {#sec-estimation}
+
+In every chapter so far the objective was given. In statistics and machine learning it
+is built from data: choose a probability model for how the data could have arisen, and
+ask which parameters make the observed data most plausible. That question is an ordinary
+minimization, and every method from the previous chapters applies to it. This chapter
+shows how the objective is built (maximum likelihood), how prior beliefs enter it
+(maximum a posteriori estimation), and why two techniques from @sec-least-squares were
+statistical estimators all along. It then asks a question optimization alone cannot
+answer, *how uncertain* the estimate is, and gives three answers of increasing
+generality: a curvature-based Gaussian approximation (Laplace), sampling (Markov chain
+Monte Carlo), and, for models with hidden variables, the expectation–maximization
+algorithm.
+
+## The problem
+
+Data $\mathcal{D} = (y_1, \dots, y_N)$ are modeled as draws from a distribution
+$p(y \mid \theta)$ with unknown parameters $\theta$. We want a point estimate
+$\hat\theta$, and ideally a description of which other values of $\theta$ are also
+consistent with the data.
+
+## Maximum likelihood
+
+::: {.callout-note title="Definition — Maximum likelihood estimation"}
+$$
+\hat\theta_{\text{MLE}} = \arg\max_\theta \; p(\mathcal{D} \mid \theta)
+= \arg\min_\theta \; -\sum_{i=1}^N \log p(y_i \mid \theta)
+\qquad \text{(independent observations).}
+$$
+:::
+
+Three reasons for the logarithm, each practical. It is increasing, so it does not move
+the maximizer. It turns the product of $N$ probabilities, which underflows to zero in
+floating point for any realistic $N$, into a sum. And sums are easy to differentiate,
+one term per observation. The **negative log-likelihood** is an objective like any
+other.
+
+For Gaussian data with known spread, $y_i \sim \mathcal{N}(\mu, \sigma^2)$, the negative
+log-likelihood is $\sum_i (y_i - \mu)^2/(2\sigma^2)$ plus a constant. Its derivative in
+$\mu$ is $-\sum_i (y_i - \mu)/\sigma^2$, which is zero at $\mu = \frac{1}{N}\sum_i y_i$:
+the maximum-likelihood estimate of a Gaussian mean is the sample mean. A numerical
+minimizer agrees:
+
+```{python}
+#| label: mle-gaussian-mean
+import jax.numpy as jnp
+import numpy as np
+
+from optimlab.inference import laplace_approximation, map_fit, mle_fit
+from optimlab.linalg import least_squares, ridge_regression
+from optimlab.viz import markdown_table
+
+rng = np.random.default_rng(0)
+sigma = 2.0
+data = rng.normal(3.0, sigma, size=200)
+
+def log_likelihood(params):
+    return jnp.sum(-0.5 * ((data - params[0]) / sigma) ** 2)
+
+mle = mle_fit(log_likelihood, x0=np.array([0.0]))  # minimizes the negative, with BFGS
+```
+
+BFGS on the negative log-likelihood returns `{python} f"{mle.x[0]:.6f}"`; the sample mean
+is `{python} f"{data.mean():.6f}"`.
+
+[Implementation: [`inference/mle.py`]({{< var src >}}/inference/mle.py) ·
+Checked by: [`test_mle.py`]({{< var tests >}}/test_mle.py)]{.impl}
+
+## Least squares is maximum likelihood; ridge is a prior
+
+Suppose observations follow a linear model with Gaussian noise,
+$b = Ax + \varepsilon$ with $\varepsilon \sim \mathcal{N}(0, \sigma^2 I)$. Then each
+$b_i$ is Gaussian around $(Ax)_i$, and the negative log-likelihood is
+$$
+-\log p(b \mid x) = \frac{1}{2\sigma^2}\lVert Ax - b \rVert^2 + \text{const}.
+$$
+Minimizing it is exactly least squares. The geometric derivation of
+@sec-least-squares and this statistical one reach the same estimator, and least squares
+inherits a statistical interpretation: it is the right choice when the noise is Gaussian
+with equal variance, and a poor one when the noise has heavy tails.
+
+Prior knowledge enters through Bayes' rule. The **posterior** distribution of the
+parameters is $p(x \mid b) \propto p(b \mid x)\, p(x)$, and its maximizer is the
+**maximum a posteriori (MAP)** estimate:
+
+::: {.callout-note title="Definition — MAP estimation"}
+$$
+\hat x_{\text{MAP}} = \arg\min_x \; \big[-\log p(b \mid x) - \log p(x)\big].
+$$
+:::
+
+With a Gaussian prior $x \sim \mathcal{N}(0, \tau^2 I)$, the second term is
+$\lVert x \rVert^2/(2\tau^2)$ plus a constant, and the MAP objective is
+$$
+\frac{1}{2\sigma^2}\lVert Ax - b \rVert^2 + \frac{1}{2\tau^2}\lVert x \rVert^2
+\;\propto\; \lVert Ax - b \rVert^2 + \alpha \lVert x \rVert^2,
+\qquad \alpha = \frac{\sigma^2}{\tau^2} .
+$$
+That is ridge regression. Its penalty is a Gaussian prior, and $\alpha$ is the ratio of
+the noise variance to the prior variance: trust the prior more when the data are noisy.
+(The lasso is, in the same way, the MAP estimate under a Laplace prior.) Computing each
+estimate both ways, by the closed-form SVD formulas and by numerical minimization of the
+probabilistic objective:
+
+```{python}
+#| label: tbl-ls-is-mle
+#| tbl-cap: "The same data, two derivations each. The geometric estimators (SVD formulas) and the statistical ones (numerical minimization of the negative log-likelihood or log-posterior, with σ = 1 and α = 5) agree to the optimizer's tolerance."
+m, n = 60, 3
+A = rng.standard_normal((m, n))
+b = A @ np.array([2.0, -1.5, 0.5]) + rng.standard_normal(m)
+alpha = 5.0
+
+def gaussian_log_likelihood(x):
+    return -0.5 * jnp.sum((jnp.asarray(A) @ x - jnp.asarray(b)) ** 2)
+
+def gaussian_log_prior(x):
+    return -0.5 * alpha * jnp.sum(x**2)
+
+ols = least_squares(A, b).x
+ols_as_mle = mle_fit(gaussian_log_likelihood, x0=np.zeros(n)).x
+ridge = ridge_regression(A, b, alpha).x
+ridge_as_map = map_fit(gaussian_log_likelihood, gaussian_log_prior, x0=np.zeros(n)).x
+fmt = lambda x: ", ".join(f"{v:.4f}" for v in x)
+markdown_table(
+    ["estimator", "closed form (SVD)", "numerical (BFGS)", "max difference"],
+    [("least squares = MLE", fmt(ols), fmt(ols_as_mle), f"{np.max(np.abs(ols - ols_as_mle)):.1e}"),
+     ("ridge = MAP", fmt(ridge), fmt(ridge_as_map), f"{np.max(np.abs(ridge - ridge_as_map)):.1e}")],
+    align="llll",
+)
+```
+
+## The Laplace approximation: uncertainty from curvature
+
+A MAP estimate is a single point. How much should we trust it? If the posterior is
+sharply peaked, other values are implausible; if it is flat, many values fit the data
+almost as well. Curvature measures exactly this, which suggests reading uncertainty off
+the Hessian.
+
+Expand the log-posterior to second order around the MAP estimate $\hat\theta$, where its
+gradient is zero:
+$$
+\log p(\theta \mid \mathcal{D}) \approx \log p(\hat\theta \mid \mathcal{D})
+- \tfrac12 (\theta - \hat\theta)^\top \mathbf{H}\, (\theta - \hat\theta),
+\qquad
+\mathbf{H} = -\nabla^2 \log p(\theta \mid \mathcal{D})\big|_{\hat\theta} .
+$$
+Exponentiating, the right-hand side is (up to normalization) a Gaussian density.
+
+::: {.callout-note title="Definition — Laplace approximation"}
+$$
+p(\theta \mid \mathcal{D}) \approx \mathcal{N}\big(\hat\theta_{\text{MAP}},\; \mathbf{H}^{-1}\big).
+$$
+:::
+
+A sharper peak means a larger Hessian and a narrower Gaussian [@bishop2006pattern, §4.4].
+The approximation costs one optimization and one Hessian, and when the true posterior is
+Gaussian it is exact. That happens for a Gaussian likelihood with a Gaussian prior on its
+mean, where the posterior can also be computed in closed form:
+
+```{python}
+#| label: laplace-exact
+n_obs = 30
+data2 = rng.normal(3.0, sigma, size=n_obs)
+mu0, tau0 = 0.0, 5.0  # prior: mean ~ N(mu0, tau0^2)
+
+def log_likelihood_mu(params):
+    return jnp.sum(-0.5 * ((data2 - params[0]) / sigma) ** 2)
+
+def log_prior_mu(params):
+    return -0.5 * ((params[0] - mu0) / tau0) ** 2
+
+post_var = 1.0 / (n_obs / sigma**2 + 1.0 / tau0**2)
+post_mean = post_var * (np.sum(data2) / sigma**2 + mu0 / tau0**2)
+map_mu = map_fit(log_likelihood_mu, log_prior_mu, x0=np.array([0.0]))
+laplace = laplace_approximation(log_likelihood_mu, log_prior_mu, map_mu.x)
+```
+
+The exact posterior has mean `{python} f"{post_mean:.4f}"` and standard deviation
+`{python} f"{np.sqrt(post_var):.4f}"`; the Laplace approximation gives
+`{python} f"{laplace.mean[0]:.4f}"` and `{python} f"{np.sqrt(laplace.cov[0, 0]):.4f}"`.
+
+The approximation fails when the posterior is not bell-shaped: skewed, multimodal, or
+squeezed against the edge of the parameter's allowed range. The next section has an
+example.
+
+[Implementation: [`inference/laplace.py`]({{< var src >}}/inference/laplace.py) ·
+Checked by: [`test_laplace.py`]({{< var tests >}}/test_laplace.py)]{.impl}
+
+## Markov chain Monte Carlo: sampling the posterior
+
+Instead of approximating the posterior by a Gaussian, we can draw samples from it and
+describe it by the samples: their mean, their spread, a histogram. The difficulty is that
+the posterior is usually known only up to its normalizing constant:
+$p(\theta \mid \mathcal{D}) = \tilde p(\theta)/Z$ with $\tilde p(\theta) =
+p(\mathcal{D} \mid \theta)\, p(\theta)$ easy to evaluate and
+$Z = \int \tilde p(\theta)\, d\theta$ an integral we cannot compute. Markov chain Monte
+Carlo constructs a random walk whose long-run distribution is the posterior, using only
+$\tilde p$.
+
+::: {.callout-note title="Algorithm — Random-walk Metropolis–Hastings"}
+Start at $\theta_0$. For $t = 0, 1, \dots$:
+
+1. **Propose** $\theta' = \theta_t + s\,\xi$ with $\xi \sim \mathcal{N}(0, I)$.
+2. **Accept** with probability
+   $\min\big(1,\; \tilde p(\theta') / \tilde p(\theta_t)\big)$: set
+   $\theta_{t+1} = \theta'$ if accepted, $\theta_{t+1} = \theta_t$ otherwise.
+
+Discard an initial **burn-in** stretch, and treat the rest as (correlated) samples from
+the posterior.
+:::
+
+The normalizing constant cancels in the ratio, which is the whole point
+[@metropolis1953equation; @hastings1970monte]. (For a proposal that is not symmetric,
+Hastings' version multiplies the ratio by $q(\theta_t \mid \theta')/q(\theta' \mid
+\theta_t)$.)
+
+### Why the chain samples the posterior
+
+A distribution $p$ is left unchanged by a random walk with transition probabilities $T$
+if the walk satisfies **detailed balance**: $p(\theta)\,T(\theta \to \theta') =
+p(\theta')\,T(\theta' \to \theta)$ for every pair. In words, at equilibrium, the flow
+from $\theta$ to $\theta'$ equals the flow back. For Metropolis with a symmetric proposal
+and $\tilde p(\theta') < \tilde p(\theta)$, the left side is $p(\theta)\, q\,
+\tilde p(\theta')/\tilde p(\theta)$ and the right side is $p(\theta')\, q \cdot 1$, and
+these are equal because $p \propto \tilde p$. Summing detailed balance over $\theta$
+shows that one step of the walk maps $p$ to itself. Under mild conditions (the walk can
+reach every region) the chain also converges to this distribution from any start.
+
+This is the same acceptance rule as simulated annealing in @sec-derivative-free, with
+$\tilde p = e^{-f/T}$ at a fixed temperature: there, sampling is a means of optimizing;
+here, it is the goal.
+
+### Settings that matter
+
+The proposal scale $s$ trades two failure modes. If it is too small, nearly every
+proposal is accepted but the chain moves in tiny steps and explores slowly. If it is too
+large, most proposals land in improbable regions and are rejected, so the chain sits
+still. Consecutive samples are correlated either way, so $N$ samples carry less
+information than $N$ independent draws, and convergence must be checked, at minimum by
+looking at the trace.
+
+### Where Laplace fails and sampling does not
+
+Eight coin flips, seven heads, and a flat prior on the probability of heads $\theta \in
+(0, 1)$. The posterior is the Beta(8, 2) distribution: mode $0.875$, mean $0.8$, and
+visibly skewed. Finding its mode already needs care: the log-likelihood
+$7 \log\theta + \log(1 - \theta)$ goes to $-\infty$ at both ends, and an unconstrained
+quasi-Newton step can jump outside $(0, 1)$, where the logarithm is undefined. Projected
+gradient descent (@sec-least-squares), which clips every iterate back into the interval,
+handles it.
+
+```{python}
+#| label: fig-laplace-vs-mcmc
+#| fig-cap: "The Beta(8, 2) posterior after seven heads in eight flips: the exact density, the Laplace approximation and a histogram of Metropolis–Hastings samples. The samples follow the skew. Laplace's Gaussian is centered on the mode, is symmetric where the posterior is not, and puts probability on values above 1, which are impossible."
+from scipy import stats
+
+from optimlab.inference import metropolis_hastings
+from optimlab.optimizers.projected_gradient import projected_gradient
+from optimlab.viz import mcmc_trace_figure, posterior_figure
+
+n_flips, n_heads = 8, 7
+
+def coin_log_likelihood(params):
+    theta = params[0]
+    return n_heads * jnp.log(theta) + (n_flips - n_heads) * jnp.log(1 - theta)
+
+def flat_log_prior(params):
+    return 0.0 * params[0]
+
+map_theta = map_fit(coin_log_likelihood, flat_log_prior, x0=np.array([0.5]),
+                    solver=projected_gradient, lower=0.02, upper=0.98, lr=0.002, max_iter=5000)
+laplace_theta = laplace_approximation(coin_log_likelihood, flat_log_prior, map_theta.x)
+
+def coin_log_posterior(params):  # unnormalized; -inf outside (0, 1)
+    theta = params[0]
+    if not 0.0 < theta < 1.0:
+        return -np.inf
+    return n_heads * np.log(theta) + (n_flips - n_heads) * np.log(1 - theta)
+
+mcmc = metropolis_hastings(coin_log_posterior, x0=np.array([0.7]), n_samples=20000,
+                           proposal_std=0.1, burn_in=2000, seed=0)
+posterior_figure(x_range=(0.3, 1.0), true_pdf=lambda t: stats.beta.pdf(t, 8.0, 2.0),
+                 laplace=laplace_theta, mcmc_samples=mcmc.samples).show()
+```
+
+```{python}
+#| label: tbl-coin
+#| tbl-cap: "Summaries of the Beta(8, 2) posterior. The MAP estimate finds the mode, and Laplace inherits it as its mean; the MCMC sample mean recovers the true posterior mean."
+p_above_1 = 1 - stats.norm.cdf(1.0, laplace_theta.mean[0], np.sqrt(laplace_theta.cov[0, 0]))
+markdown_table(
+    ["quantity", "value"],
+    [("true mode / true mean", "0.875 / 0.800"),
+     ("MAP estimate (projected gradient)", f"{map_theta.x[0]:.3f}"),
+     ("Laplace mean", f"{laplace_theta.mean[0]:.3f}"),
+     ("Laplace probability of θ > 1", f"{p_above_1:.1%}"),
+     ("MCMC sample mean", f"{mcmc.samples.mean():.3f}"),
+     ("MCMC acceptance rate", f"{mcmc.acceptance_rate:.2f}")],
+)
+```
+
+```{python}
+#| label: fig-mcmc-trace
+#| fig-cap: "The chain's trace (left) and the histogram of its samples (right). A healthy trace looks like noise around a stable level, with no long drifts and no long flat stretches where the chain is stuck."
+mcmc_trace_figure(mcmc.samples).show()
+```
+
+[Implementation: [`inference/mcmc.py`]({{< var src >}}/inference/mcmc.py) ·
+Checked by: [`test_mcmc.py`]({{< var tests >}}/test_mcmc.py)]{.impl}
+
+## Expectation–maximization: estimation with hidden variables
+
+Some models have variables that were never observed. In a **Gaussian mixture model**,
+each data point comes from one of $K$ Gaussian clusters, but which one is hidden:
+$$
+p(x \mid \theta) = \sum_{k=1}^K \pi_k\, \mathcal{N}(x \mid \mu_k, \Sigma_k),
+\qquad \theta = \{\pi_k, \mu_k, \Sigma_k\} .
+$$
+The log-likelihood $\sum_i \log \sum_k \pi_k \mathcal{N}(x_i \mid \mu_k, \Sigma_k)$ has a
+sum inside the logarithm, which couples all the parameters and has no closed-form
+maximizer. If the cluster labels were known, though, the problem would split into one
+easy Gaussian fit per cluster. The expectation–maximization (EM) algorithm
+[@dempster1977maximum] exploits this by alternating between guessing the labels softly
+and fitting to the guess.
+
+### The lower bound behind EM
+
+For any distribution $q$ over the hidden label $z$ of a point, Jensen's inequality (the
+logarithm is concave, so the log of an average is at least the average of the logs)
+gives
+$$
+\log p(x \mid \theta) = \log \sum_z q(z)\, \frac{p(x, z \mid \theta)}{q(z)}
+\;\ge\; \sum_z q(z) \log \frac{p(x, z \mid \theta)}{q(z)} ,
+$$
+with equality exactly when $q(z) = p(z \mid x, \theta)$, the posterior over the label.
+EM maximizes this lower bound, alternately over $q$ and over $\theta$.
+
+::: {.callout-note title="Algorithm — EM for a Gaussian mixture"}
+Repeat until the log-likelihood stops increasing:
+
+1. **E-step** (fix $\theta$, choose $q$): for each point $i$ and cluster $k$, compute the
+   **responsibility**
+   $$
+   \gamma_{ik} = \frac{\pi_k\, \mathcal{N}(x_i \mid \mu_k, \Sigma_k)}{\sum_j \pi_j\, \mathcal{N}(x_i \mid \mu_j, \Sigma_j)} ,
+   $$
+   the posterior probability that point $i$ came from cluster $k$. This makes the bound
+   touch the log-likelihood.
+2. **M-step** (fix $q$, choose $\theta$): with $N_k = \sum_i \gamma_{ik}$, refit each
+   cluster to its weighted points,
+   $$
+   \pi_k = \frac{N_k}{N}, \quad
+   \mu_k = \frac{1}{N_k}\sum_i \gamma_{ik}\, x_i, \quad
+   \Sigma_k = \frac{1}{N_k}\sum_i \gamma_{ik}\,(x_i - \mu_k)(x_i - \mu_k)^\top .
+   $$
+:::
+
+The guarantee follows in one line. After the E-step the bound equals the log-likelihood
+at $\theta_{\text{old}}$; the M-step raises the bound; and the bound never exceeds the
+log-likelihood. So $\log p(\mathcal{D} \mid \theta_{\text{new}}) \ge
+\log p(\mathcal{D} \mid \theta_{\text{old}})$: **the likelihood never decreases**, with no
+step size to tune. That is the kind of guarantee none of the gradient methods of
+@sec-gradient-methods offers without a carefully chosen step.
+
+```{python}
+#| label: fig-gmm-fit
+#| fig-cap: "Three Gaussian clusters recovered by EM from a random start. Points are colored by their most likely cluster for display only; the algorithm itself keeps soft responsibilities throughout. Ellipses show each fitted component's 2-standard-deviation region."
+from optimlab.inference import em_gmm
+from optimlab.viz import gmm_figure
+
+rng_gmm = np.random.default_rng(0)
+true_means = np.array([[0.0, 0.0], [8.0, 8.0], [8.0, -8.0]])
+X = np.concatenate([rng_gmm.multivariate_normal(mu, 1.2 * np.eye(2), size=100)
+                    for mu in true_means])
+gmm = em_gmm(X, n_components=3, seed=0)
+ll = np.asarray(gmm.log_likelihood_trajectory)
+monotone = bool(np.all(np.diff(ll) >= -1e-8))
+gmm_figure(X, gmm).show()
+```
+
+EM converges in `{python} gmm.n_iter` iterations, the log-likelihood increases at every
+one of them (checked: `{python} "yes" if monotone else "no"`), and each fitted mean lies
+within `{python} f"{max(np.min(np.linalg.norm(gmm.means - mu, axis=1)) for mu in true_means):.2f}"`
+of a true cluster center.
+
+The guarantee is local. EM climbs to *a* local maximum, and which one depends on the
+starting point. Running it from several random initializations on the same data shows
+this directly:
+
+```{python}
+#| label: tbl-em-restarts
+#| tbl-cap: "EM on the same data from eight random initializations, with a budget of 200 iterations. Most reach the same, highest log-likelihood. One climbs instead to a lower local maximum: two of its components both sit midway between the clusters at (0, 0) and (8, 8) and split those clusters' points between them, and from there it improves too slowly to finish within the budget. Its log-likelihood still never decreased."
+rows = []
+for seed in range(8):
+    run = em_gmm(X, n_components=3, seed=seed)
+    error = max(np.min(np.linalg.norm(run.means - mu, axis=1)) for mu in true_means)
+    rows.append((seed, run.n_iter, f"{run.log_likelihood_trajectory[-1]:.1f}", f"{error:.2f}"))
+markdown_table(["initialization", "iterations", "final log-likelihood",
+                "worst distance from a true center"], rows, align="rrrr")
+```
+
+The standard remedy is the one this table suggests: run EM from several starting points
+and keep the fit with the highest likelihood. EM has a characteristic failure too: if a
+component's covariance collapses onto a single data point, the likelihood becomes
+unbounded, so practical implementations put a small floor under the covariances.
+
+[Implementation: [`inference/em.py`]({{< var src >}}/inference/em.py) ·
+Checked by: [`test_em.py`]({{< var tests >}}/test_em.py)]{.impl}
+
+## What these examples cannot show
+
+- **Dimension.** A random-walk sampler in one dimension mixes quickly. In hundreds of
+  dimensions it mixes very slowly, and practical samplers use gradients of the
+  log-posterior (Hamiltonian Monte Carlo) to move efficiently. Laplace approximations
+  in high dimensions need the Hessian or an approximation of it.
+- **Model misspecification.** Every estimate here assumes the model is right: Gaussian
+  noise, a correct number of clusters. When it is wrong, maximum likelihood still returns
+  an answer, and the uncertainty estimates can be confidently wrong.
+- **Choosing $K$.** EM fits a mixture with a given number of components; choosing that
+  number is a model-selection problem.
+
+## Connections
+
+- **@sec-least-squares**: least squares and ridge regression, derived there
+  geometrically, are the MLE and MAP estimators under Gaussian assumptions.
+- **@sec-geometry**: the Laplace approximation reads uncertainty from the Hessian, the
+  same object that classified stationary points.
+- **@sec-derivative-free**: simulated annealing uses the Metropolis acceptance rule to
+  optimize; MCMC uses it to sample.
+- **@sec-high-dim** trains neural networks by minimizing a negative log-likelihood in
+  hundreds of dimensions, and studies the curvature of that objective at its minimum.

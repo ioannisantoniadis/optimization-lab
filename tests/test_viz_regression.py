@@ -9,6 +9,7 @@ from optimlab.viz import (
     residuals_figure,
     ridge_path_figure,
     svd_conditioning_figure,
+    svd_steps_figure,
 )
 
 
@@ -116,3 +117,15 @@ def test_lasso_path_figure_hits_exact_zero_unlike_ridge():
     ridge_fig = ridge_path_figure(A, b, alphas)
     # ridge shrinks the same feature but never hits exactly zero at a finite alpha
     assert abs(ridge_fig.data[2].y[-2]) > 1e-8
+
+
+def test_svd_steps_follow_each_right_singular_vector_to_sigma_times_u():
+    A = np.array([[3.0, 1.0], [0.0, 0.5]])
+    fig = svd_steps_figure(A)
+    U, s, Vt = np.linalg.svd(A)
+    arrows = [t for t in fig.data if t.name and t.name.startswith("v")]
+    assert len(arrows) == 8  # two vectors in each of four panels
+    for i in range(2):
+        start, end = arrows[i], arrows[6 + i]  # first and last panel
+        np.testing.assert_allclose([start.x[1], start.y[1]], Vt[i])
+        np.testing.assert_allclose(np.abs([end.x[1], end.y[1]]), np.abs(s[i] * U[:, i]), atol=1e-12)

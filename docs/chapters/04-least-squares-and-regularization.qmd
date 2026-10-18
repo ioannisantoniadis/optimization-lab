@@ -1,0 +1,392 @@
+# Least Squares and Regularization {#sec-least-squares}
+
+Fitting a model to data is the most common optimization problem there is, and its most
+common form is least squares: choose parameters so that the sum of squared differences
+between predictions and observations is as small as possible. When the model is linear
+in its parameters, the objective is a quadratic, and @sec-geometry already contains
+everything needed to solve it exactly: the SVD gives the answer in closed form, and the
+condition number explains when that answer is too sensitive to noise to be trusted. This
+chapter derives the solution, then repairs its one weakness, sensitivity, with
+**regularization**: ridge regression, which shrinks every parameter smoothly, and the
+lasso, which sets some of them exactly to zero and needs a new kind of algorithm,
+proximal gradient, because its objective has a kink. It ends with models that are
+nonlinear in their parameters, solved by the Gauss–Newton method.
+
+## The problem
+
+::: {.callout-note title="Definition — Linear least squares"}
+Given a design matrix $A \in \mathbb{R}^{m \times n}$ (one row per observation, one
+column per parameter) and observations $b \in \mathbb{R}^m$,
+$$
+\min_{x \in \mathbb{R}^n} \; \lVert Ax - b \rVert_2^2 .
+$$
+:::
+
+Fitting a line $y \approx x_1 t + x_2$ to points $(t_i, y_i)$ is the case where row $i$
+of $A$ is $(t_i, 1)$ and $b_i = y_i$. Polynomials, sums of known basis functions and
+linear regression with many features all have the same form: the model can be
+arbitrarily nonlinear in $t$, as long as it is linear in the parameters $x$.
+
+## The normal equations, and why to avoid them
+
+The objective is a convex quadratic with gradient $2A^\top(Ax - b)$. Setting it to zero
+gives the **normal equations**
+$$
+A^\top A\, x = A^\top b .
+$$
+They have a clean geometric meaning. $Ax$ ranges over the column space of $A$, and the
+condition says the residual $b - Ax$ is orthogonal to every column: the best fit $Ax^\star$
+is the **orthogonal projection** of $b$ onto the column space.
+
+As a way to *compute* $x^\star$, though, they have a flaw. The singular values of
+$A^\top A$ are the squares of those of $A$, so
+$$
+\kappa(A^\top A) = \kappa(A)^2 ,
+$$
+and by @sec-geometry's error bound, every digit of accuracy lost to the conditioning of
+$A$ is lost twice. Polynomial fitting shows how fast this bites: the columns
+$1, t, t^2, \dots$ become nearly parallel as the degree grows. The data below are
+generated exactly from known coefficients, so any error in the recovered coefficients is
+numerical:
+
+```{python}
+#| label: tbl-normal-equations
+#| tbl-cap: "Recovering known polynomial coefficients from 50 exact data points on [0, 1]. Forming AᵀA squares the condition number, and the normal equations lose about twice as many digits as the SVD-based solution."
+import numpy as np
+
+from optimlab.linalg import condition_number, least_squares, ridge_regression
+from optimlab.viz import markdown_table
+
+rng = np.random.default_rng(0)
+t = np.linspace(0, 1, 50)
+rows = []
+for degree in [6, 8, 10]:
+    A_poly = np.vander(t, degree + 1, increasing=True)
+    x_true = rng.standard_normal(degree + 1)
+    b_poly = A_poly @ x_true
+    err = lambda x: np.linalg.norm(x - x_true) / np.linalg.norm(x_true)
+    x_normal = np.linalg.solve(A_poly.T @ A_poly, A_poly.T @ b_poly)
+    x_svd = least_squares(A_poly, b_poly).x
+    rows.append((degree, f"{condition_number(A_poly):.1e}",
+                 f"{condition_number(A_poly.T @ A_poly):.1e}",
+                 f"{err(x_normal):.1e}", f"{err(x_svd):.1e}"))
+markdown_table(["degree", "κ(A)", "κ(AᵀA)", "error, normal equations", "error, SVD"], rows,
+               align="rrrrr")
+```
+
+## Solving with the SVD
+
+Write $A = U\Sigma V^\top$. Orthogonal matrices do not change lengths, so multiplying
+the residual by $U^\top$ changes nothing:
+$$
+\lVert Ax - b \rVert^2 = \lVert U^\top (U \Sigma V^\top x - b) \rVert^2
+= \lVert \Sigma y - \beta \rVert^2, \qquad y = V^\top x, \quad \beta = U^\top b .
+$$
+In these rotated coordinates the problem **decouples** into independent scalar
+problems:
+$$
+\lVert \Sigma y - \beta \rVert^2 = \sum_{i:\, \sigma_i > 0} (\sigma_i y_i - \beta_i)^2
+\;+ \sum_{i:\, \sigma_i = 0} \beta_i^2 \;+ \sum_{i > n} \beta_i^2 .
+$$
+Each term with $\sigma_i > 0$ is zero at $y_i = \beta_i / \sigma_i$. The remaining terms
+do not depend on $y$ at all: they are the part of $b$ that no choice of $x$ can reach,
+the final residual. And when $\sigma_i = 0$, $y_i$ does not affect the objective, so every
+value is optimal; choosing $y_i = 0$ gives the solution of smallest norm, since
+$\lVert x \rVert = \lVert y \rVert$.
+
+::: {.callout-note title="Definition — Least-squares solution via the pseudoinverse"}
+$$
+x^\star = V \Sigma^{+} U^\top b = A^{+} b,
+\qquad
+\Sigma^{+} = \operatorname{diag}\!\left(\tfrac{1}{\sigma_1}, \dots, \tfrac{1}{\sigma_r}, 0, \dots, 0\right),
+$$
+where $r$ is the number of singular values treated as nonzero (those above a small
+relative cutoff).
+:::
+
+One formula covers three situations that are often taught separately:
+
+- **Overdetermined** ($m > n$, full column rank): the ordinary least-squares fit.
+- **Underdetermined** ($m < n$): infinitely many exact fits; the formula picks the one
+  with the smallest norm.
+- **Rank-deficient**: some combination of columns carries no information; its
+  direction gets coefficient zero instead of an arbitrary or infinite value.
+
+```{python}
+#| label: fig-ls-fit
+#| fig-cap: "Ordinary least squares on noisy data: the fitted line minimizes the total squared vertical distance to the points."
+from optimlab.viz import regression_fit_figure, residuals_figure
+
+t_line = np.linspace(0, 10, 40)
+y_line = 2.0 * t_line + 1.0 + rng.normal(scale=2.0, size=t_line.size)
+A_line = np.column_stack([t_line, np.ones_like(t_line)])
+fit = least_squares(A_line, y_line)
+regression_fit_figure(t_line.reshape(-1, 1), y_line, fit.x).show()
+```
+
+The fit recovers slope `{python} f"{fit.x[0]:.2f}"` and intercept
+`{python} f"{fit.x[1]:.2f}"` (the data were generated with 2 and 1). A single number such
+as the residual norm can hide *how* a fit is wrong; a plot of residuals against predicted
+values cannot. Any visible pattern means the model is missing something that more data
+will not fix.
+
+```{python}
+#| label: fig-residuals
+#| fig-cap: "Residuals against predicted values for the same fit, scattered around zero with no visible trend or funnel: what a well-specified linear model looks like."
+residuals_figure(A_line, y_line, fit.x).show()
+```
+
+### The weakness: dividing by small singular values
+
+The solution's coordinates are $y_i = \beta_i / \sigma_i$. Noise in the observations
+enters through $\beta = U^\top b$, and in every direction it is divided by $\sigma_i$. In
+a direction where $A$ barely stretches, a small amount of noise becomes a large error in
+$x$. This is the condition-number bound of @sec-geometry in action, and it is the
+problem regularization solves.
+
+[Implementation: [`linalg/regression.py`]({{< var src >}}/linalg/regression.py) ·
+Checked by: [`test_linalg.py`]({{< var tests >}}/test_linalg.py)]{.impl}
+
+## Ridge regression
+
+::: {.callout-note title="Definition — Ridge (Tikhonov) regression"}
+$$
+\min_x \; \lVert Ax - b \rVert_2^2 + \alpha \lVert x \rVert_2^2, \qquad \alpha > 0 .
+$$
+:::
+
+The penalty charges for large coefficients, and in the SVD coordinates it stays
+decoupled ($\lVert x \rVert = \lVert y \rVert$), so each scalar problem becomes
+$(\sigma_i y_i - \beta_i)^2 + \alpha y_i^2$. Setting its derivative to zero gives
+$$
+y_i = \frac{\sigma_i}{\sigma_i^2 + \alpha}\, \beta_i
+= \underbrace{\frac{\sigma_i^2}{\sigma_i^2 + \alpha}}_{\text{filter factor}} \cdot \frac{\beta_i}{\sigma_i} .
+$$
+Ridge is the least-squares solution with each direction multiplied by a **filter
+factor**. When $\sigma_i^2 \gg \alpha$ the factor is close to 1 and the direction is left
+alone. When $\sigma_i^2 \ll \alpha$ it is close to $\sigma_i^2/\alpha$, which goes to
+zero, and the direction that would have amplified noise is switched off. In matrix form
+the solution satisfies $(A^\top A + \alpha I)\,x = A^\top b$, and the added $\alpha I$
+makes that system invertible and better conditioned for any $\alpha > 0$.
+
+The trade-off is between **variance** and **bias**: coefficients that no longer swing
+with small changes in the data, bought with a systematic shrinkage toward zero.
+Following each coefficient as $\alpha$ grows makes it visible:
+
+```{python}
+#| label: fig-ridge-path
+#| fig-cap: "Ridge's regularization path on a problem where only two of four features matter (x₁ and x₃ in the data-generating model). Every coefficient shrinks smoothly toward zero as α grows; none reaches it at any finite α."
+from optimlab.viz import lasso_path_figure, ridge_path_figure
+
+A = rng.standard_normal((30, 4))
+x_sparse = np.array([2.0, 0.0, -1.5, 0.0])  # only features 1 and 3 matter
+b = A @ x_sparse + 0.05 * rng.standard_normal(30)
+alphas = np.logspace(-2, 2.5, 25)
+ridge_path_figure(A, b, alphas).show()
+```
+
+How to pick $\alpha$ is a statistical question more than an optimization one. The usual
+answer is cross-validation: fit on part of the data and choose the $\alpha$ that predicts
+the held-out part best. @sec-estimation shows that ridge is also a Bayesian estimate
+under a Gaussian prior, which gives $\alpha$ a meaning: the ratio of noise variance to
+prior variance.
+
+[Implementation: [`linalg/regression.py`]({{< var src >}}/linalg/regression.py) ·
+Checked by: [`test_linalg.py`]({{< var tests >}}/test_linalg.py)]{.impl}
+
+## The lasso and proximal gradient
+
+Ridge never sets a coefficient exactly to zero. Often we want it to: when most features
+are irrelevant, a model that uses only the relevant ones is easier to interpret and can
+predict better. Penalizing the $\ell_1$ norm instead of the squared $\ell_2$ norm does
+this [@tibshirani1996regression].
+
+::: {.callout-note title="Definition — Lasso"}
+$$
+\min_x \; \tfrac{1}{2} \lVert Ax - b \rVert_2^2 + \alpha \lVert x \rVert_1,
+\qquad \lVert x \rVert_1 = \sum_j \lvert x_j \rvert .
+$$
+:::
+
+### Why the $\ell_1$ norm produces zeros
+
+Picture the problem as minimizing the squared error subject to a budget on the
+penalty. The level sets of the squared error are ellipses around the unregularized
+solution. The set $\{x : \lVert x \rVert_2 \le c\}$ is a round ball, and an ellipse
+growing outward typically first touches it at a point where no coordinate is zero. The
+set $\{x : \lVert x \rVert_1 \le c\}$ is a diamond (a cross-polytope in higher
+dimensions) with corners on the coordinate axes, and an ellipse typically first touches
+it at a corner or along an edge: a point where some coordinates are exactly zero.
+
+### A kink needs a new tool
+
+The price is that $\lvert x_j \rvert$ has no derivative at $x_j = 0$, exactly where we
+want solutions to land, so the methods of @sec-gradient-methods do not apply directly.
+The fix is to split the objective into a smooth part $f(x) = \tfrac12\lVert Ax - b
+\rVert^2$, handled by a gradient step, and a nonsmooth part $h(x) = \alpha\lVert x
+\rVert_1$, handled exactly by its **proximal operator**:
+
+::: {.callout-note title="Definition — Proximal operator and proximal gradient"}
+For a convex $h$ and a step $\eta > 0$,
+$$
+\operatorname{prox}_{\eta h}(v) = \arg\min_x \; h(x) + \frac{1}{2\eta}\lVert x - v \rVert^2 ,
+$$
+the point that best balances a small $h$ against staying near $v$. **Proximal
+gradient** for $\min_x f(x) + h(x)$ alternates a gradient step on $f$ with a proximal
+step on $h$:
+$$
+x_{k+1} = \operatorname{prox}_{\eta h}\big(x_k - \eta \nabla f(x_k)\big).
+$$
+:::
+
+For $h = \alpha \lVert \cdot \rVert_1$ the proximal problem separates by coordinate:
+minimize $\alpha \lvert x \rvert + (x - v)^2/(2\eta)$ over a scalar $x$. For $x \ne 0$
+the derivative is $\alpha\,\operatorname{sign}(x) + (x - v)/\eta$, which vanishes at
+$x = v - \eta\alpha\,\operatorname{sign}(x)$; that is consistent only when
+$\lvert v \rvert > \eta\alpha$. Otherwise the minimum is at the kink, $x = 0$. Together:
+$$
+\operatorname{prox}_{\eta\alpha\lvert\cdot\rvert}(v) = \operatorname{sign}(v)\,\max\big(\lvert v \rvert - \eta\alpha,\; 0\big),
+$$
+**soft-thresholding**: shrink every coordinate toward zero by $\eta\alpha$, and set to
+exactly zero any coordinate that would cross it. Proximal gradient with this operator is
+known as ISTA. With $\eta = 1/L$, where $L$ is the largest eigenvalue of $A^\top A$, it
+converges at the same $O(1/k)$ rate as gradient descent on a smooth convex function, and
+an accelerated variant, FISTA, adds a Nesterov-style momentum step to reach $O(1/k^2)$
+[@beck2009fast].
+
+```{python}
+#| label: fig-lasso-path
+#| fig-cap: "The lasso's path on the same data as the ridge path above. The two irrelevant coefficients (x₂ and x₄) reach exactly zero at a small α and stay there; the relevant ones survive much longer. Ridge only shrinks; the lasso selects."
+lasso_path_figure(A, b, alphas).show()
+```
+
+```{python}
+#| label: lasso-one-alpha
+from optimlab.optimizers.proximal_gradient import (
+    CompositeProblem, proximal_gradient, soft_threshold,
+)
+
+alpha = 1.0
+L_smooth = np.linalg.eigvalsh(A.T @ A).max()
+lasso = proximal_gradient(
+    CompositeProblem(grad_smooth=lambda x: A.T @ (A @ x - b),
+                     prox_nonsmooth=lambda v, step: soft_threshold(v, alpha * step),
+                     x0=np.zeros(4)),
+    lr=1 / L_smooth, max_iter=5000, tol=1e-10,
+)
+ridge = ridge_regression(A, b, alpha).x
+fmt = lambda x: ", ".join(f"{v:.3g}" for v in x)
+```
+
+At $\alpha = 1$ the lasso returns $x =$ (`{python} fmt(lasso.x)`), with the two
+irrelevant coefficients exactly zero, while ridge at the same $\alpha$ returns
+(`{python} fmt(ridge)`): small but nonzero everywhere.
+
+### Constraints as a proximal step
+
+The proximal framework also covers simple constraints. If $h$ is the indicator of a set
+$C$ (zero inside, $+\infty$ outside), its proximal operator is the closest point of $C$,
+the **projection** $\Pi_C$, and proximal gradient becomes **projected gradient
+descent**: $x_{k+1} = \Pi_C\big(x_k - \eta \nabla f(x_k)\big)$. For a box
+$\ell \le x \le u$ the projection is simply clipping each coordinate. One detail matters:
+at a solution on the boundary of the box, the gradient need not vanish, so the stopping
+test uses the size of the projected step, not the gradient. @sec-estimation uses this
+method to keep a probability inside $(0, 1)$.
+
+[Implementation: [`optimizers/proximal_gradient.py`]({{< var src >}}/optimizers/proximal_gradient.py),
+[`optimizers/projected_gradient.py`]({{< var src >}}/optimizers/projected_gradient.py) ·
+Checked by: [`test_proximal_gradient.py`]({{< var tests >}}/test_proximal_gradient.py),
+[`test_projected_gradient.py`]({{< var tests >}}/test_projected_gradient.py)]{.impl}
+
+## Nonlinear least squares: the Gauss–Newton method
+
+Fitting $y \approx a\,e^{-ct}$ is still a sum of squares, but the model is nonlinear in
+$c$, so the SVD formula no longer applies. Write the residuals as a vector function
+$r(x)$ with $r_i(x) = \text{model}(t_i; x) - y_i$, and minimize
+$\tfrac12 \lVert r(x) \rVert^2$. With $J(x)$ the Jacobian of $r$ (one row per residual),
+$$
+\nabla \tfrac12\lVert r \rVert^2 = J^\top r,
+\qquad
+\nabla^2 \tfrac12\lVert r \rVert^2 = J^\top J + \sum_i r_i\, \nabla^2 r_i .
+$$
+The second Hessian term is small when the residuals are small (the model fits) or when
+the model is nearly linear. Dropping it gives a Newton-like method that needs only first
+derivatives:
+
+::: {.callout-note title="Definition — Gauss–Newton"}
+Linearize the residuals, $r(x_k + p) \approx r(x_k) + J(x_k)\,p$, and solve the linear
+least-squares problem for the step:
+$$
+p_k = \arg\min_p \lVert J(x_k)\, p + r(x_k) \rVert^2,
+\qquad x_{k+1} = x_k + p_k .
+$$
+:::
+
+Each iteration is one linear least-squares solve, done with the SVD machinery above.
+Near a good fit, Gauss–Newton converges almost as fast as Newton's method. When the
+residuals are large, or the starting point is poor, the dropped term matters and the step
+can be poor. The **Levenberg–Marquardt** method [@levenberg1944method;
+@marquardt1963algorithm] adds a damping term, solving
+$(J^\top J + \lambda I)\,p = -J^\top r$. A large $\lambda$ makes it a short
+gradient-descent step, a small one recovers Gauss–Newton, and $\lambda$ is adjusted
+according to whether the last step helped.
+
+```{python}
+#| label: fig-gauss-newton
+#| fig-cap: "Gauss–Newton fitting an exponential decay to noisy data. Each iteration solves a linear least-squares problem for the step, and a handful of them suffice."
+import jax.numpy as jnp
+import plotly.graph_objects as go
+
+from optimlab.optimizers import NonlinearLeastSquaresProblem, gauss_newton
+from optimlab.viz.theme import contrasting_categorical, layout_template
+
+t_decay = np.linspace(0.0, 5.0, 30)
+a_true, c_true = 2.5, 0.7
+y_decay = a_true * np.exp(-c_true * t_decay) + rng.normal(scale=0.05, size=t_decay.size)
+
+def residual(params):
+    a, c = params[0], params[1]
+    return a * jnp.exp(-c * t_decay) - y_decay
+
+gn = gauss_newton(NonlinearLeastSquaresProblem(residual=residual, x0=np.array([1.0, 1.0])))
+
+colors = contrasting_categorical()
+fig = go.Figure([
+    go.Scatter(x=t_decay, y=y_decay, mode="markers", name="data",
+               marker={"size": 7, "color": "#898781"}),
+    go.Scatter(x=t_decay, y=gn.x[0] * np.exp(-gn.x[1] * t_decay), mode="lines",
+               name="Gauss–Newton fit", line={"color": colors[0], "width": 2.5}),
+])
+fig.update_layout(**layout_template(xaxis_title="t", yaxis_title="y"))
+fig.show()
+```
+
+From the starting guess $(a, c) = (1, 1)$, Gauss–Newton reaches
+$a =$ `{python} f"{gn.x[0]:.3f}"` and $c =$ `{python} f"{gn.x[1]:.3f}"` (true values
+`{python} a_true` and `{python} c_true`) in `{python} gn.n_iter` iterations.
+
+[Implementation: [`optimizers/gauss_newton.py`]({{< var src >}}/optimizers/gauss_newton.py) ·
+Checked by: [`test_gauss_newton.py`]({{< var tests >}}/test_gauss_newton.py)]{.impl}
+
+## What these examples cannot show
+
+- **Large, sparse problems.** A full SVD costs $O(mn^2)$. Large least-squares problems are
+  solved iteratively, with conjugate gradient (@sec-gradient-methods) applied to the
+  normal equations in a numerically careful form, or with a QR factorization.
+- **Choosing $\alpha$.** Every regularized fit here uses a hand-picked $\alpha$. In
+  practice it comes from cross-validation, and the right value depends on how much data
+  there is.
+- **Statistics.** These examples show how to compute a fit, not how much to trust it:
+  confidence intervals, the effect of correlated features on the lasso's choices, and
+  model selection are statistical questions. @sec-estimation starts on them.
+
+## Connections
+
+- **@sec-geometry** supplies the SVD and the condition number that drive every result
+  here.
+- **@sec-estimation** shows that least squares is maximum-likelihood estimation under
+  Gaussian noise, and that ridge is a Bayesian estimate under a Gaussian prior.
+- **@sec-constraints** adds hard equality and inequality constraints, and solves the
+  lasso a second way, with ADMM.
+- **@sec-applications** applies Tikhonov regularization to deblurring an image, and
+  Gauss–Newton to recovering a physical system's parameters from noisy measurements.

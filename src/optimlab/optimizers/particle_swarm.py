@@ -28,6 +28,7 @@ def particle_swarm(
     social: float = 1.5,
     tol: float = 1e-10,
     seed: int = 0,
+    record_history: bool = False,
 ) -> OptimizeResult:
     """Velocity update for particle `i`:
     `v_i <- inertia*v_i + cognitive*r1*(personal_best_i - x_i) + social*r2*(global_best - x_i)`,
@@ -38,6 +39,9 @@ def particle_swarm(
     are clamped back into `bounds` (defaulting to `problem.domain`, as in
     `genetic_algorithm`) after each step, velocity zeroed on the clamped axis so a
     particle doesn't immediately try to fly back out.
+
+    `record_history=True` also stores every iteration's full swarm (an
+    `(n_particles, n)` array, initial swarm first) in `result.history["population"]`.
     """
     if bounds is None:
         if problem.domain is None:
@@ -63,6 +67,7 @@ def particle_swarm(
 
     x_hist, f_hist, g_hist = [global_best_pos.copy()], [global_best_fit], [float(fitness.std())]
     converged = g_hist[0] < tol
+    population_hist = [positions.copy()] if record_history else None
 
     n_iter = 0
     while not converged and n_iter < max_iter:
@@ -93,10 +98,15 @@ def particle_swarm(
         x_hist.append(global_best_pos.copy())
         f_hist.append(global_best_fit)
         g_hist.append(float(fitness.std()))
+        if population_hist is not None:
+            population_hist.append(positions.copy())
         if g_hist[-1] < tol:
             converged = True
 
-    return track_iterations(
+    result = track_iterations(
         x_hist, f_hist, g_hist, converged=converged, solver_name="particle_swarm",
         message="swarm converged (fitness std below tol)" if converged else "max_iter reached",
     )
+    if population_hist is not None:
+        result.history["population"] = population_hist
+    return result

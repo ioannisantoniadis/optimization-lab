@@ -21,8 +21,15 @@ from optimlab.viz.regression import (
     residuals_figure,
     ridge_path_figure,
     svd_conditioning_figure,
+    svd_steps_figure,
+)
+from optimlab.viz.search import (
+    bayes_opt_step_figure,
+    population_snapshots_figure,
+    simplex_steps_figure,
 )
 from optimlab.viz.sociology import fair_allocation_figure
+from optimlab.viz.tables import markdown_table
 
 #: `optimlab.viz.highdim`/`inverse`/`ml` hard-import jax at module level (jax has no
 #: WebAssembly/Pyodide build), so importing them eagerly here would break `optimlab.viz`
@@ -55,6 +62,7 @@ __all__ = [
     "add_trajectory",
     "add_trajectory_3d",
     "arena_figure",
+    "bayes_opt_step_figure",
     "central_path_figure",
     "contour_figure",
     "convergence_figure",
@@ -70,20 +78,24 @@ __all__ = [
     "kkt_geometry_figure",
     "lasso_path_figure",
     "loss_landscape_figure",
+    "markdown_table",
     "mcmc_trace_figure",
     "ntk_concentration_figure",
     "pinn_solution_figure",
     "polytope_figure",
+    "population_snapshots_figure",
     "posterior_figure",
     "race_figure",
     "regression_fit_figure",
     "residuals_figure",
     "ridge_path_figure",
     "saddle_point_figure",
+    "simplex_steps_figure",
     "solver_color_map",
     "surface_figure",
     "surface_race_figure",
     "svd_conditioning_figure",
+    "svd_steps_figure",
     "system_id_figure",
     "trajectory_and_control_figure",
     "transform_values",

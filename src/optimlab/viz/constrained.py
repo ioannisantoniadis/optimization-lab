@@ -100,7 +100,7 @@ def central_path_figure(
 
     fig.update_layout(
         **layout_template(
-            dark=dark, title=f"{problem.name} — central path", xaxis_title="x0", yaxis_title="x1",
+            dark=dark, title=f"{problem.name} — central path", xaxis_title="x₁", yaxis_title="x₂",
             legend={"y": 1, "yanchor": "top", "x": 1.02, "xanchor": "left"},
             margin={"l": 60, "r": 140, "t": 50, "b": 50},
         ),
@@ -238,7 +238,7 @@ def kkt_geometry_figure(
     fig.update_layout(
         **layout_template(
             dark=dark, title=f"{problem.name} — KKT stationarity at the optimum",
-            xaxis_title="x0", yaxis_title="x1",
+            xaxis_title="x₁", yaxis_title="x₂",
             legend={"y": 1, "yanchor": "top", "x": 1.02, "xanchor": "left"},
             margin={"l": 60, "r": 220, "t": 50, "b": 50},
         ),

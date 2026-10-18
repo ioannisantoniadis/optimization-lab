@@ -1,0 +1,73 @@
+# The Code Behind the Figures {#sec-the-code}
+
+Every figure and number in this book is computed when the book is built, by a small
+Python package, `optimlab`, that implements each method from scratch with NumPy and
+JAX. This appendix explains how that code is organized, how it is checked, and how to
+run it. Nothing in the chapters depends on reading it.
+
+## One interface for every method
+
+Almost every method takes the same two things in and gives the same thing back. A
+**problem** bundles an objective $f$, a starting point and, optionally, a search box and
+known minima; gradients and Hessians are computed by automatic differentiation
+(JAX) unless supplied by hand. A **result** reports the final point and value, the
+number of iterations, whether the method's own stopping test was met, and the full
+history of iterates, which is what the figures draw. Because of this shared shape, any
+general-purpose method can run on any problem, which is what
+[Choosing an Algorithm](appendix-choosing-an-algorithm.qmd) exploits. Methods for
+special problem classes (linear programs, least squares, composite and constrained
+problems) take their own problem types.
+
+| part of the package | contents | used in |
+|---|---|---|
+| `core` | the problem and result types, automatic differentiation | all |
+| `landscapes` | test functions (sphere, Rosenbrock, Rastrigin, Himmelblau, …) | @sec-geometry, @sec-derivative-free |
+| `optimizers` | every iterative method in the book | @sec-gradient-methods to @sec-derivative-free |
+| `linalg` | SVD, least squares, ridge, equality-constrained QP | @sec-geometry, @sec-least-squares, @sec-constraints |
+| `inference` | MLE, MAP, Laplace, Metropolis–Hastings, EM | @sec-estimation |
+| `highdim` | networks as problems, Lanczos, loss slices, mode connectivity, NTK | @sec-high-dim |
+| `inverse`, `control`, `ml`, `problems` | the applications | @sec-applications |
+| `viz` | every figure builder, sharing one colorblind-checked theme | all |
+| `backends` | adapters to SciPy, CVXPY and Optuna, used as independent checks | @sec-linear-programming to @sec-derivative-free |
+
+## How the code is checked
+
+Each method has its own test file, and the tests check real behavior against known
+answers rather than only that the code runs: convergence to known minima, agreement with
+closed-form solutions, and agreement with independent solvers (SciPy's HiGHS for linear
+programs, CVXPY for constrained problems, Optuna for black-box search). The
+*Checked by* link at the end of each method section in the book points to its tests.
+
+## Running it yourself
+
+The source is on [GitHub]({{< var repo >}}). With [uv](https://docs.astral.sh/uv/)
+installed:
+
+```bash
+uv sync --extra viz --extra dev --extra docs   # install
+uv run pytest                                  # run the tests
+quarto render docs                             # build this book (needs Quarto)
+```
+
+### Interactive notebooks
+
+Eight [marimo](https://marimo.io) notebooks let you change a problem or a setting and
+watch the figures update, one per topic:
+
+| notebook | explores | chapter |
+|---|---|---|
+| `gradient_descent_explorer.py` | step sizes, momentum and solver races on test landscapes | @sec-gradient-methods |
+| `lp_polytope_explorer.py` | the simplex path on an editable linear program | @sec-linear-programming |
+| `regularization_path_explorer.py` | ridge and lasso paths | @sec-least-squares |
+| `central_path_explorer.py` | the barrier method's central path | @sec-constraints |
+| `bayesian_posterior_explorer.py` | Laplace versus MCMC on a coin-flip posterior | @sec-estimation |
+| `loss_landscape_explorer.py` | loss slices and Hessian spectra of small networks | @sec-high-dim |
+| `control_explorer.py` | LQR cost weights and initial state, re-solved live | @sec-applications |
+| `solver_arena_explorer.py` | every method on a chosen test function | @sec-choosing |
+
+```bash
+uv run marimo edit notebooks/marimo/gradient_descent_explorer.py
+```
+
+The notebooks need a local Python: the package uses JAX, which cannot run inside a web
+browser, so they cannot be embedded in these pages.

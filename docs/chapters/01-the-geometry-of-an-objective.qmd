@@ -1,0 +1,462 @@
+# The Geometry of an Objective {#sec-geometry}
+
+Every algorithm in this book answers the same question: where is the lowest point of a
+function? None of them can see the whole function at once. They stand at one point,
+measure something about the terrain right there (its height, its slope, how it curves)
+and decide where to step next. So before any algorithm, this chapter describes the
+terrain itself, in the four terms every later chapter uses: **slope** (the gradient),
+**curvature** (the Hessian), how unevenly that curvature is spread across directions
+(**conditioning**, measured for any matrix by the singular value decomposition), and
+**convexity**, the one property that turns "lowest point nearby" into "lowest point
+anywhere".
+
+## The problem
+
+::: {.callout-note title="Definition — Unconstrained optimization problem"}
+Given an objective $f: \mathbb{R}^n \to \mathbb{R}$, find
+$$
+x^\star \in \arg\min_{x \in \mathbb{R}^n} f(x).
+$$
+A point $x^\star$ is a **local minimum** if $f(x^\star) \le f(x)$ for every $x$ in some
+neighborhood of $x^\star$, and a **global minimum** if this holds for every
+$x \in \mathbb{R}^n$.
+:::
+
+An algorithm only ever sees $f$ through what it can evaluate at the points it visits.
+The methods in this book differ mainly in how much they ask for at each point:
+
+- **values only**, $f(x)$: derivative-free methods (@sec-derivative-free);
+- **values and slope**, $f(x)$ and $\nabla f(x)$: gradient methods
+  (@sec-gradient-methods);
+- **values, slope and curvature**, adding $\nabla^2 f(x)$: Newton-type methods.
+
+More information per point usually means fewer points, at a higher cost per point.
+Throughout, "solving" a general problem means finding a *local* minimum; only extra
+structure, convexity above all, upgrades that to a global guarantee.
+
+## Slope: the gradient
+
+::: {.callout-note title="Definition — Gradient"}
+For a differentiable $f: \mathbb{R}^n \to \mathbb{R}$,
+$$
+\nabla f(x) = \begin{bmatrix} \partial f / \partial x_1 & \cdots & \partial f / \partial x_n \end{bmatrix}^\top .
+$$
+:::
+
+The gradient packages all $n$ partial derivatives into one vector, and its meaning comes
+from the **directional derivative**: the rate at which $f$ changes when you move from
+$x$ in direction $d$ is
+$$
+\frac{d}{d\tau} f(x + \tau d)\Big|_{\tau = 0} = \nabla f(x)^\top d
+= \lVert \nabla f(x) \rVert \, \lVert d \rVert \cos \varphi ,
+$$
+where $\varphi$ is the angle between $d$ and $\nabla f(x)$. Over all unit-length
+directions, this is largest when $\varphi = 0$ and most negative when $\varphi = \pi$.
+Two facts follow directly:
+
+- $\nabla f(x)$ points in the direction of **steepest ascent**, and $-\nabla f(x)$ in
+  the direction of **steepest descent**. Gradient descent (@sec-gradient-methods) is
+  nothing more than stepping along $-\nabla f$.
+- Along a level set (a contour line, where $f$ is constant) the rate of change is zero,
+  so $\nabla f(x)^\top d = 0$ for every direction $d$ tangent to it: **the gradient is
+  perpendicular to the contour lines.**
+
+The second fact gives the most important necessary condition in optimization. If
+$\nabla f(x) \neq 0$, a small enough step along $-\nabla f(x)$ strictly lowers $f$, so
+$x$ cannot be a local minimum. Hence:
+
+::: {.callout-tip title="Theorem — First-order necessary condition"}
+If $x^\star$ is a local minimum of a differentiable $f$, then $\nabla f(x^\star) = 0$.
+:::
+
+Points where the gradient vanishes are called **stationary points**. The condition is
+necessary, not sufficient: the gradient is also zero at the top of a hill and at a
+mountain pass. Himmelblau's function, a standard two-dimensional test landscape, has all
+three kinds, and finding them is a small optimization exercise of its own: run Newton's
+method (@sec-gradient-methods) on the equation $\nabla f(x) = 0$ from a grid of
+starting points and keep every distinct point it converges to.
+
+```{python}
+#| label: stationary-points
+import numpy as np
+import plotly.graph_objects as go
+
+from optimlab.landscapes import get
+from optimlab.viz import contour_figure, markdown_table
+from optimlab.viz.theme import contrasting_categorical
+
+himmelblau = get("himmelblau")
+problem = himmelblau.problem(x0=np.zeros(2))
+
+stationary = []
+for a in np.linspace(-5, 5, 11):
+    for b in np.linspace(-5, 5, 11):
+        x = np.array([a, b])
+        for _ in range(50):  # Newton's method on grad f(x) = 0: x <- x - H^{-1} g
+            x = x - np.linalg.solve(problem.hess(x), problem.grad(x))
+        is_new = all(np.linalg.norm(x - s) > 1e-6 for s in stationary)
+        if np.linalg.norm(problem.grad(x)) < 1e-9 and np.all(np.abs(x) <= 5) and is_new:
+            stationary.append(x)
+
+def kind(eigenvalues):
+    if np.all(eigenvalues > 0):
+        return "minimum"
+    return "maximum" if np.all(eigenvalues < 0) else "saddle"
+
+points = sorted(
+    ((x, float(problem.f(x)), np.linalg.eigvalsh(problem.hess(x))) for x in stationary),
+    key=lambda p: p[1],
+)
+n_min = sum(kind(ev) == "minimum" for _, _, ev in points)
+n_saddle = sum(kind(ev) == "saddle" for _, _, ev in points)
+n_max = sum(kind(ev) == "maximum" for _, _, ev in points)
+```
+
+The search finds `{python} len(points)` stationary points: `{python} n_min` minima,
+`{python} n_saddle` saddles and `{python} n_max` maximum.
+
+```{python}
+#| label: fig-stationary-points
+#| fig-cap: "Himmelblau's function with all of its stationary points marked. The gradient is zero at every marker, yet only the four circles are minima. The diamonds are saddle points (mountain passes between neighboring minima) and the square is the single local maximum. Slope alone cannot tell these apart."
+fig = contour_figure(problem)
+fig.data = fig.data[:1]  # keep the landscape, drop the default minimum markers
+colors = contrasting_categorical()
+style = {"minimum": ("circle", colors[0]), "saddle": ("diamond", colors[1]),
+         "maximum": ("square", colors[3])}
+for label, (symbol, color) in style.items():
+    pts = np.array([x for x, _, ev in points if kind(ev) == label])
+    fig.add_trace(go.Scatter(
+        x=pts[:, 0], y=pts[:, 1], mode="markers", name=label,
+        marker={"symbol": symbol, "size": 12, "color": color,
+                "line": {"color": "#ffffff", "width": 1.5}},
+    ))
+fig.update_layout(title="Stationary points of Himmelblau's function")
+fig.show()
+```
+
+A practical note on where gradients come from. Deriving $\nabla f$ by hand is tedious
+and error-prone for anything beyond a textbook function. Every gradient in this book is
+computed by **automatic differentiation**, which applies the chain rule mechanically to
+the operations that define $f$ and returns the exact gradient up to floating-point
+rounding [@baydin2018automatic]. Backpropagation in neural networks is the same idea
+(@sec-applications).
+
+[Implementation: [`landscapes/testfunctions.py`]({{< var src >}}/landscapes/testfunctions.py),
+[`core.py`]({{< var src >}}/core.py) (automatic differentiation) ·
+Checked by: [`test_testfunctions.py`]({{< var tests >}}/test_testfunctions.py)]{.impl}
+
+## Curvature: the Hessian
+
+The gradient says which way is downhill. It says nothing about whether the ground keeps
+falling, levels off, or turns back up. That is the job of the second derivatives.
+
+::: {.callout-note title="Definition — Hessian and the second-order model"}
+The Hessian is the symmetric matrix of second partial derivatives,
+$\left[\nabla^2 f(x)\right]_{ij} = \partial^2 f / \partial x_i \partial x_j$. Near $x$,
+$f$ is approximated by its second-order Taylor expansion
+$$
+f(x + d) \approx f(x) + \nabla f(x)^\top d + \tfrac{1}{2}\, d^\top \nabla^2 f(x)\, d .
+$$
+:::
+
+At a stationary point the linear term vanishes, so the quadratic term alone decides
+what happens nearby. Because the Hessian is symmetric, it has an orthonormal basis of
+eigenvectors $q_1, \dots, q_n$ with real eigenvalues $\lambda_1, \dots, \lambda_n$.
+Moving a distance $\tau$ along $q_i$ changes $f$ by approximately
+$\tfrac{1}{2}\lambda_i \tau^2$. Each eigenvalue is the curvature along its own
+eigenvector: positive means the function curves up in that direction, negative means it
+curves down. This gives a complete local classification:
+
+::: {.callout-tip title="Theorem — Second-order conditions"}
+Let $\nabla f(x^\star) = 0$.
+
+- If every eigenvalue of $\nabla^2 f(x^\star)$ is positive, $x^\star$ is a strict local
+  **minimum** (sufficient condition).
+- If $x^\star$ is a local minimum, every eigenvalue is nonnegative (necessary
+  condition).
+- If the eigenvalues have mixed signs, $x^\star$ is a **saddle point**: downhill in some
+  directions, uphill in others. All negative means a local **maximum**.
+:::
+
+Applied to the stationary points found above, the eigenvalue signs reproduce exactly the
+labels in @fig-stationary-points:
+
+```{python}
+#| label: tbl-stationary-points
+#| tbl-cap: "The stationary points of Himmelblau's function, classified by the signs of the Hessian's eigenvalues."
+markdown_table(
+    ["point", "f(x)", "eigenvalues of the Hessian", "type"],
+    [(f"({x[0]:.3f}, {x[1]:.3f})", f"{fx:.3g}" if fx > 1e-9 else "0",
+      f"{ev[0]:.1f}, {ev[1]:.1f}", kind(ev)) for x, fx, ev in points],
+    align="lrrl",
+)
+```
+
+Two lessons carry forward. First, the method used to find these points, Newton's method
+on $\nabla f = 0$, converged to saddles and the maximum just as readily as to minima: it
+looks for *stationary* points, and @sec-gradient-methods shows how to stop it from
+climbing. Second, in two dimensions a saddle is one of a handful of special points. In a
+million dimensions, @sec-high-dim shows that almost every stationary point is a saddle.
+
+## Conditioning: how uneven the curvature is
+
+The simplest function with curvature is a quadratic,
+$f(x) = \tfrac{1}{2} x^\top H x$ with $H$ symmetric positive definite. Its Hessian is
+$H$ everywhere, its minimum is at the origin, and its level sets
+$\{x : x^\top H x = 2c\}$ are ellipses whose axes point along the eigenvectors of $H$,
+with semi-axis length $\sqrt{2c / \lambda_i}$. A direction of high curvature gives a
+short axis; a direction of low curvature gives a long one.
+
+::: {.callout-note title="Definition — Condition number of a symmetric positive definite matrix"}
+$$
+\kappa(H) = \frac{\lambda_{\max}(H)}{\lambda_{\min}(H)} \ \ge 1 .
+$$
+:::
+
+When $\kappa = 1$ the level sets are circles, and $-\nabla f(x) = -Hx$ points straight
+at the minimum from everywhere. When $\kappa$ is large the level sets are long, thin
+ellipses: a narrow valley. Because the gradient is perpendicular to the contour lines,
+on the steep walls of a narrow valley it points mostly *across* the valley, not along
+it toward the minimum.
+
+```{python}
+#| label: fig-gradient-across-valley
+#| fig-cap: "The quadratic f(x) = (x₁² + 10·x₂²)/2, condition number 10. Arrows show the steepest-descent direction -∇f at points on one contour line. Each is perpendicular to the contour, so away from the two ends of the ellipse it points mostly across the valley rather than toward the minimum at the origin. Following these directions takes many short, zig-zagging steps, and the effect grows with the condition number."
+from optimlab.core import Problem
+
+H = np.diag([1.0, 10.0])
+quadratic = Problem(f=lambda x: 0.5 * x @ H @ x, x0=np.array([10.0, 1.0]),
+                    name="quadratic", minimum=np.zeros(2), domain=(-11, 11))
+fig = contour_figure(quadratic)
+for angle in np.linspace(0.3, 2 * np.pi + 0.3, 11)[:-1]:  # points on one contour line
+    x = np.array([9.0 * np.cos(angle), 9.0 / np.sqrt(10.0) * np.sin(angle)])
+    d = -H @ x
+    d = 2.0 * d / np.linalg.norm(d)
+    fig.add_annotation(x=x[0] + d[0], y=x[1] + d[1], ax=x[0], ay=x[1], xref="x", yref="y",
+                       axref="x", ayref="y", showarrow=True, arrowhead=3, arrowsize=1.2,
+                       arrowwidth=2, arrowcolor=colors[0])
+fig.update_layout(title="Steepest descent on an ill-conditioned quadratic")
+fig.show()
+```
+
+Every smooth function looks like a quadratic near a strict local minimum, with
+$H = \nabla^2 f(x^\star)$, so this picture is general: the condition number of the
+Hessian at the minimum governs how hard the last stretch of the descent is.
+@sec-gradient-methods turns this into a rate: plain gradient descent needs a number of
+iterations proportional to $\kappa$.
+
+## The singular value decomposition: the geometry of any matrix
+
+Eigenvalues describe a symmetric matrix like a Hessian. Many matrices in optimization
+are not symmetric, or not even square. The design matrix of a regression has one row per
+observation and one column per feature, and @sec-least-squares needs to know how it
+stretches space. The singular value decomposition (SVD) answers that question for every
+matrix.
+
+::: {.callout-note title="Definition — Singular value decomposition"}
+Every $A \in \mathbb{R}^{m \times n}$ factors as
+$$
+A = U \Sigma V^\top ,
+$$
+with $U \in \mathbb{R}^{m \times m}$ and $V \in \mathbb{R}^{n \times n}$ orthogonal
+($U^\top U = I$, $V^\top V = I$) and $\Sigma \in \mathbb{R}^{m \times n}$ diagonal, with
+the **singular values** $\sigma_1 \ge \sigma_2 \ge \dots \ge 0$ on its diagonal.
+Column by column: $A v_i = \sigma_i u_i$.
+:::
+
+### Reading it as three moves
+
+Applying $A = U\Sigma V^\top$ to a vector $x$ happens in three steps, read right to left:
+
+1. **$V^\top$ rotates** (or reflects) the input. It turns the special input directions
+   $v_1, \dots, v_n$, the right singular vectors, onto the coordinate axes. Lengths and
+   angles are unchanged.
+2. **$\Sigma$ stretches** each coordinate axis $i$ by its own factor $\sigma_i$. This is
+   the only step that changes lengths. If $m \ne n$ it also drops or pads dimensions.
+3. **$U$ rotates** the result into the output space, sending axis $i$ to the left
+   singular vector $u_i$.
+
+So every linear map, however it is written down, is a rotation, then a stretch along
+perpendicular axes, then another rotation. Applied to the unit circle, it produces an
+ellipse whose semi-axes are $\sigma_i u_i$:
+
+```{python}
+#| label: fig-svd-steps
+#| fig-cap: "A = [[3, 1], [0, 0.5]] applied to the unit circle in three moves. Vᵀ rotates the right singular vectors v₁ and v₂ onto the axes; Σ stretches the axes by σ₁ and σ₂; U rotates the result into place. The final ellipse is exactly A applied to the circle, and its semi-axes are σ₁u₁ and σ₂u₂."
+from optimlab.viz import svd_steps_figure
+
+A = np.array([[3.0, 1.0], [0.0, 0.5]])
+svd_steps_figure(A).show()
+```
+
+### Where it comes from
+
+The construction is short, and it explains why the decomposition always exists. The
+matrix $A^\top A$ is symmetric and positive semidefinite ($x^\top A^\top A x =
+\lVert Ax \rVert^2 \ge 0$), so it has orthonormal eigenvectors $v_1, \dots, v_n$ with
+nonnegative eigenvalues, which we write as $\sigma_1^2 \ge \dots \ge \sigma_n^2$. For each
+$\sigma_i > 0$, define $u_i = A v_i / \sigma_i$. These output directions are orthonormal
+too:
+$$
+u_i^\top u_j = \frac{v_i^\top A^\top A\, v_j}{\sigma_i \sigma_j}
+= \frac{\sigma_j^2\, v_i^\top v_j}{\sigma_i \sigma_j}
+= \begin{cases} 1 & i = j \\ 0 & i \ne j. \end{cases}
+$$
+Completing the $u_i$ to an orthonormal basis of $\mathbb{R}^m$ and stacking the columns
+gives $AV = U\Sigma$, which is $A = U\Sigma V^\top$. Two consequences are worth keeping:
+
+- $\sigma_1 = \max_{\lVert x \rVert = 1} \lVert Ax \rVert$ and, for $m \ge n$,
+  $\sigma_n = \min_{\lVert x \rVert = 1} \lVert Ax \rVert$: the largest and smallest
+  stretch $A$ applies to any direction.
+- The number of nonzero singular values is the **rank** of $A$. A singular value that is
+  tiny but nonzero marks a direction that $A$ nearly destroys.
+
+For a symmetric positive definite matrix such as a Hessian at a minimum, the SVD and the
+eigendecomposition coincide and $\sigma_i = \lambda_i$.
+
+### Conditioning of a linear system
+
+::: {.callout-note title="Definition — Condition number of a matrix"}
+For an invertible $A$, $\kappa(A) = \sigma_1 / \sigma_n$.
+:::
+
+The condition number measures how much solving $Ax = b$ can amplify errors. Perturb the
+right-hand side to $b + \delta b$; the solution moves by $\delta x = A^{-1} \delta b$.
+Since $A^{-1}$ stretches by at most $1/\sigma_n$ and $A$ by at most $\sigma_1$,
+$$
+\lVert \delta x \rVert \le \frac{\lVert \delta b \rVert}{\sigma_n},
+\qquad
+\lVert b \rVert \le \sigma_1 \lVert x \rVert
+\quad\Longrightarrow\quad
+\frac{\lVert \delta x \rVert}{\lVert x \rVert} \le \kappa(A)\,
+\frac{\lVert \delta b \rVert}{\lVert b \rVert} .
+$$
+The bound is attained when $b$ lies along $u_1$ (the direction $A$ stretches most) and
+the error along $u_n$ (the direction it stretches least): a relative error in the data
+can come back $\kappa(A)$ times larger in the answer.
+
+```{python}
+#| label: fig-svd-conditioning
+#| fig-cap: "The same matrix as above: the unit circle becomes an ellipse with semi-axes σ₁ and σ₂. Their ratio is the condition number; the thinner the ellipse, the more an error along the short axis is amplified when the map is inverted."
+from optimlab.linalg import condition_number
+from optimlab.viz import svd_conditioning_figure
+
+svd_conditioning_figure(A).show()
+```
+
+The two notions of conditioning agree: the Hessian of the quadratic in
+@fig-gradient-across-valley has condition number
+`{python} f"{condition_number(H):.0f}"`, the same number whether it is computed from
+eigenvalues or singular values.
+
+[Implementation: [`linalg/svd.py`]({{< var src >}}/linalg/svd.py) ·
+Checked by: [`test_linalg.py`]({{< var tests >}}/test_linalg.py)]{.impl}
+
+## Convexity
+
+Everything so far is local: a gradient, a Hessian, a quadratic model, each valid near
+one point. Convexity is the property that lets local information speak for the whole
+function.
+
+::: {.callout-note title="Definition — Convex set and convex function"}
+A set $C$ is **convex** if the segment between any two of its points stays inside it. A
+function $f$ is **convex** (on a convex domain) if for all $x, y$ and all $t \in [0, 1]$,
+$$
+f\big(t x + (1-t) y\big) \;\le\; t f(x) + (1-t) f(y).
+$$
+Geometrically, the chord between any two points on the graph never dips below the
+graph.
+:::
+
+For differentiable functions there are two equivalent tests, and each one says
+something useful:
+
+- **First-order test.** $f$ is convex if and only if
+  $$
+  f(y) \ge f(x) + \nabla f(x)^\top (y - x) \quad \text{for all } x, y :
+  $$
+  every tangent plane lies below the graph. Put $\nabla f(x^\star) = 0$ into this
+  inequality and it reads $f(y) \ge f(x^\star)$ for every $y$. **For a convex function,
+  every stationary point is a global minimum.** The gradient's local information has
+  become a global certificate.
+- **Second-order test.** A twice-differentiable $f$ is convex if and only if
+  $\nabla^2 f(x)$ is positive semidefinite (all eigenvalues $\ge 0$) at every $x$: the
+  function curves up, or stays flat, in every direction, everywhere.
+
+::: {.callout-tip title="Theorem — Local minima of convex functions are global"}
+If $f$ is convex on a convex set $C$, every local minimum of $f$ on $C$ is a global
+minimum on $C$, and the set of minimizers is convex.
+:::
+
+*Why.* Suppose $x$ is a local minimum but some $y \in C$ has $f(y) < f(x)$. Points
+$z = tx + (1-t)y$ with $t$ close to 1 lie arbitrarily near $x$, and convexity gives
+$f(z) \le t f(x) + (1-t) f(y) < f(x)$, contradicting local minimality.
+
+The second-order test also gives a quick numerical probe. A single point where the
+Hessian has a negative eigenvalue *proves* that a function is not convex. Nonnegative
+eigenvalues at many sample points only *suggest* convexity. Probing the standard test
+functions on a grid over their usual domains:
+
+```{python}
+#| label: tbl-convexity-probe
+#| tbl-cap: "Smallest Hessian eigenvalue found on a 25 × 25 grid over each test function's standard domain. A negative value is a proof of non-convexity; a positive one is evidence, not proof."
+from optimlab.landscapes import ALL_FUNCTIONS
+
+rows = []
+for name in ALL_FUNCTIONS:
+    bf = get(name)
+    p = bf.problem(n_dim=2, seed=0)
+    grid = np.linspace(*p.domain, 25)
+    smallest = min(np.linalg.eigvalsh(p.hess(np.array([a, b]))).min()
+                   for a in grid for b in grid)
+    rows.append((name.replace("_", "-").title(), f"{smallest:.3g}",
+                 "convex" if bf.convex else "not convex"))
+markdown_table(["function", "smallest Hessian eigenvalue on the grid", "known status"], rows,
+               align="lrl")
+```
+
+### Strong convexity and smoothness
+
+Two constants refine "curves up" into "curves up by at least this much, and at most that
+much", and they control the convergence rate of every method in
+@sec-gradient-methods.
+
+::: {.callout-note title="Definition — Strong convexity and smoothness"}
+A twice-differentiable $f$ is **$\mu$-strongly convex** and **$L$-smooth** if, for every
+$x$,
+$$
+\mu I \preceq \nabla^2 f(x) \preceq L I ,
+$$
+that is, every eigenvalue of every Hessian lies in $[\mu, L]$ with $\mu > 0$. The ratio
+$\kappa = L / \mu$ is the condition number of the function.
+:::
+
+For the quadratic $\tfrac{1}{2}x^\top H x$, $\mu$ and $L$ are the smallest and largest
+eigenvalues of $H$, and $\kappa$ is exactly the matrix condition number from earlier.
+$L$ bounds how fast the gradient can change, which caps how large a step is safe. $\mu$
+guarantees the function rises at least quadratically away from its minimum, which
+guarantees steady progress. Their ratio decides how many steps the journey takes.
+
+## What these examples cannot show
+
+- **Dimension.** Every picture here is two-dimensional. The same quantities (gradient,
+  Hessian eigenvalues, condition number) carry over to any dimension, but intuition does
+  not: @sec-high-dim shows how differently stationary points behave in a million
+  dimensions.
+- **Proof.** A grid of Hessian eigenvalues can disprove convexity but never prove it, and
+  a numerically found list of stationary points is complete only for the starting points
+  tried.
+- **Kinks.** Everything here assumes $f$ is differentiable. The absolute value, the
+  $\ell_1$ norm and a maximum of functions have corners where no gradient exists;
+  @sec-least-squares and @sec-derivative-free handle them.
+
+## Connections
+
+- **@sec-gradient-methods** turns slope and curvature into algorithms, and turns the
+  condition number $\kappa$ into iteration counts.
+- **@sec-least-squares** uses the SVD to solve regression problems exactly, and the
+  condition number to explain why regularization is needed.
+- **@sec-constraints** generalizes $\nabla f(x^\star) = 0$ to problems with
+  constraints, where the gradient need not vanish at the optimum.
+- **@sec-high-dim** returns to the signs of Hessian eigenvalues, measured on a trained
+  neural network instead of a two-dimensional test function.

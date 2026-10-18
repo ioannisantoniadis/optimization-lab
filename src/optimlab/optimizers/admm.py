@@ -75,6 +75,7 @@ def admm(
     rho: float = 1.0,
     max_iter: int = 500,
     tol: float = 1e-6,
+    record_history: bool = False,
 ) -> OptimizeResult:
     """`rho` trades off how strictly `x = z` is enforced at each step against how far
     each proximal step is allowed to move — unlike proximal gradient's step size, `rho`
@@ -85,6 +86,9 @@ def admm(
     primal residual by itself isn't safe to stop on). `OptimizeResult
     .grad_norm_trajectory` holds `max(primal_residual, dual_residual)` at each step —
     the single conservative number driving that stopping decision.
+
+    `record_history=True` also stores the two residuals separately, one entry per
+    iteration, in `result.history["primal_residual"]` and `result.history["dual_residual"]`.
     """
     x = problem.x0.copy()
     z = problem.x0.copy()
@@ -98,6 +102,8 @@ def admm(
     # grad_norm before its first step, ADMM must always run at least one iteration.
     converged = False
     n_iter = 0
+    primal_hist: list[float] = []
+    dual_hist: list[float] = []
     while not converged and n_iter < max_iter:
         x = problem.prox_f(z - u, 1.0 / rho)
         z_prev = z
@@ -110,11 +116,17 @@ def admm(
         x_hist.append(x.copy())
         f_hist.append(problem.f(x))
         g_hist.append(max(primal_residual, dual_residual))
+        primal_hist.append(primal_residual)
+        dual_hist.append(dual_residual)
 
         if primal_residual < tol and dual_residual < tol:
             converged = True
 
-    return track_iterations(
+    result = track_iterations(
         x_hist, f_hist, g_hist, converged=converged, solver_name="admm",
         message="primal and dual residuals below tol" if converged else "max_iter reached",
     )
+    if record_history:
+        result.history["primal_residual"] = primal_hist
+        result.history["dual_residual"] = dual_hist
+    return result

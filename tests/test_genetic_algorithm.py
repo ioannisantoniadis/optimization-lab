@@ -52,3 +52,16 @@ def test_is_reproducible_given_the_same_seed():
     result_a = genetic_algorithm(bf.problem(n_dim=2, seed=0), seed=42, max_generations=20)
     result_b = genetic_algorithm(bf.problem(n_dim=2, seed=0), seed=42, max_generations=20)
     np.testing.assert_allclose(result_a.x, result_b.x)
+
+
+def test_record_history_stores_each_generation_sorted_best_first():
+    bf = get("rastrigin")
+    plain = genetic_algorithm(bf.problem(n_dim=2, seed=0), seed=5, max_generations=20)
+    recorded = genetic_algorithm(
+        bf.problem(n_dim=2, seed=0), seed=5, max_generations=20, record_history=True
+    )
+    np.testing.assert_allclose(plain.x, recorded.x)
+    generations = recorded.history["population"]
+    assert len(generations) == recorded.n_iter + 1
+    for generation, best in zip(generations, recorded.trajectory):
+        np.testing.assert_allclose(generation[0], best)

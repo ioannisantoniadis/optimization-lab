@@ -1,0 +1,598 @@
+# Applications {#sec-applications}
+
+The previous chapters were organized by method. Real problems arrive the other way
+around: as a question in some domain, which has to be turned into an objective,
+variables and constraints before any method applies. That translation, **modeling**, is
+where most of the work and most of the judgment lies, and a good model usually lands in a
+problem class that an earlier chapter already knows how to solve. This chapter works
+through examples from imaging, physics, control, machine learning, economics and
+resource allocation, and ends with a deliberately small personal decision problem in
+which the way a constraint is written decides the answer.
+
+## The pattern
+
+Each application below follows the same three steps: state the unknowns and the
+objective; recognize the problem class; solve it with the method that class calls for.
+
+| application | unknowns | problem class | method | from |
+|---|---|---|---|---|
+| deblurring an image | pixel intensities | regularized least squares | quasi-Newton (BFGS) | @sec-least-squares |
+| identifying a physical system | physical constants | nonlinear least squares | Gauss–Newton | @sec-least-squares |
+| linear–quadratic control | a control sequence | quadratic, solved by recursion | Riccati recursion | this chapter |
+| swinging up a pendulum | a control sequence | smooth, non-convex | BFGS through a simulation | @sec-gradient-methods |
+| navigating a grid | a policy | discrete dynamic program | value iteration | this chapter |
+| training a network by hand | network weights | gradient computation | backpropagation | @sec-high-dim |
+| solving an ODE with a network | network weights | smooth, non-convex | BFGS | @sec-gradient-methods |
+| choosing a portfolio | asset weights | equality-constrained QP | KKT system | @sec-constraints |
+| sharing a network fairly | user rates | convex, inequality-constrained | barrier method | @sec-constraints |
+| allocating a week | hours per activity | non-smooth, discontinuous | genetic algorithm, annealing | @sec-derivative-free |
+
+: Each application reduces to a problem class covered earlier. {#tbl-pattern}
+
+## Inverse problems
+
+An **inverse problem** asks for an unknown cause from an indirect, corrupted
+observation of its effect: the sharp image behind a blurred photograph, the physical
+constants behind a measured trajectory.
+
+### Deblurring an image
+
+A blurred image is a linear function of the sharp one: each blurred pixel is a weighted
+average of its neighbors. Writing the sharp image as a vector $x$ and the blur as a
+matrix $A$, the observation is $b = Ax + \varepsilon$ with noise $\varepsilon$. This is
+the least-squares model of @sec-least-squares, with one catch that makes it
+**ill-posed**: blurring is designed to suppress fine detail, so $A$ has many tiny
+singular values, exactly the directions in which the unregularized solution divides
+noise by nearly zero. Ridge (Tikhonov) regularization is the classical remedy:
+$$
+\min_x \; \frac{1}{p}\lVert Ax - b \rVert^2 + \frac{\alpha}{p}\lVert x \rVert^2 ,
+$$
+with $p$ the number of pixels. For a $24 \times 24$ image this is a 576-variable smooth
+problem, solved here with BFGS.
+
+```{python}
+#| label: fig-deblurring
+#| fig-cap: "The true image, its blurred and noisy observation, and the Tikhonov-regularized reconstruction, on a shared color scale. The reconstruction is sharper than the observation; its texture shows the noise that regularization damps but cannot remove, and its soft edges show the bias it introduces."
+import numpy as np
+
+from optimlab.inverse import blur_image, deblurring_problem
+from optimlab.optimizers import bfgs
+from optimlab.viz import deblurring_figure, markdown_table
+
+n_px = 24
+true_image = np.zeros((n_px, n_px))
+true_image[8:16, 8:16] = 1.0
+rng = np.random.default_rng(0)
+observed = blur_image(true_image, sigma=1.5) + 0.02 * rng.standard_normal((n_px, n_px))
+
+def reconstruct(alpha):
+    return bfgs(deblurring_problem(observed, sigma=1.5, alpha=alpha), max_iter=500).x.reshape(n_px, n_px)
+
+recovered = reconstruct(0.01)
+deblurring_figure(true_image, observed, recovered).show()
+```
+
+The regularization strength $\alpha$ sets the bias–variance trade-off of
+@sec-least-squares, now visible as image quality:
+
+```{python}
+#| label: tbl-deblurring-alpha
+#| tbl-cap: "Mean squared error of the reconstruction against the true image, for several regularization strengths. Too little regularization amplifies noise until the result is worse than the blurred observation itself; too much smooths it back toward blur."
+mse = lambda img: np.mean((img - true_image) ** 2)
+rows = [("blurred observation (no reconstruction)", f"{mse(observed):.5f}")]
+rows += [(f"reconstruction, α = {alpha:g}", f"{mse(reconstruct(alpha)):.5f}")
+         for alpha in [1e-4, 1e-3, 1e-2, 3e-1]]
+markdown_table(["image", "mean squared error"], rows)
+```
+
+### Identifying a physical system
+
+A damped oscillator obeys $\ddot q + 2\zeta\omega\,\dot q + \omega^2 q = 0$, with
+natural frequency $\omega$ and damping ratio $\zeta$. Given noisy measurements of its
+position over time, which $(\omega, \zeta)$ produced them? The forward model, simulating
+the oscillator from given parameters, is easy; inverting it is a nonlinear least-squares
+problem: minimize the squared difference between the simulated and the measured
+trajectory. Gauss–Newton (@sec-least-squares) needs the Jacobian of the simulated
+trajectory with respect to $(\omega, \zeta)$. Because the simulator (a fourth-order
+Runge–Kutta integrator) is written with differentiable operations, automatic
+differentiation provides that Jacobian directly through the simulation loop, with no
+sensitivity equations derived by hand.
+
+```{python}
+#| label: fig-system-id
+#| fig-cap: "Noisy position measurements of a damped oscillator and the trajectory simulated from the parameters Gauss–Newton recovers. The fit runs through the middle of the noise."
+from optimlab.inverse import oscillator_identification_problem, simulate_damped_oscillator
+from optimlab.optimizers import gauss_newton
+from optimlab.viz import system_id_figure
+
+true_omega, true_zeta = 2.5, 0.15
+state0 = np.array([1.0, 0.0])
+t = np.linspace(0, 10, 40)
+clean = np.asarray(simulate_damped_oscillator(true_omega, true_zeta, state0, t))
+measured = clean + 0.02 * rng.standard_normal(clean.shape)
+
+sysid = gauss_newton(
+    oscillator_identification_problem(t, measured, state0, params0=np.array([1.0, 0.5])),
+    max_iter=30,
+)
+fitted = np.asarray(simulate_damped_oscillator(sysid.x[0], sysid.x[1], state0, t))
+system_id_figure(t, measured, fitted).show()
+```
+
+From a starting guess of $(1, 0.5)$, Gauss–Newton recovers $\omega =$
+`{python} f"{sysid.x[0]:.3f}"` and $\zeta =$ `{python} f"{sysid.x[1]:.3f}"` (true values
+`{python} true_omega` and `{python} true_zeta`).
+
+[Implementation: [`inverse/`]({{< var src >}}/inverse) ·
+Checked by: [`test_deblurring.py`]({{< var tests >}}/test_deblurring.py),
+[`test_system_id.py`]({{< var tests >}}/test_system_id.py)]{.impl}
+
+## Control
+
+Control problems choose a sequence of actions $u_0, \dots, u_{T-1}$ that steer a dynamic
+system $x_{k+1} = F(x_k, u_k)$ (here $x$ is the system's state) at minimum cost. The
+unknowns are the actions; the dynamics link each one to everything that follows.
+
+### Linear–quadratic regulation: an exact solution
+
+When the dynamics are linear, $x_{k+1} = Ax_k + Bu_k$, and the cost is quadratic,
+$$
+J = \sum_{k=0}^{T-1} \big( x_k^\top Q x_k + u_k^\top R u_k \big) + x_T^\top Q_f\, x_T ,
+$$
+the problem has a closed-form solution [@kalman1960contributions]. The derivation works
+backward in time. Let $V_k(x)$ be the lowest cost still to come from state $x$ at time
+$k$. At the final time, $V_T(x) = x^\top Q_f x$, a quadratic. Suppose $V_{k+1}(x) =
+x^\top P_{k+1} x$. Then
+$$
+V_k(x) = \min_u \Big[ x^\top Q x + u^\top R u + (Ax + Bu)^\top P_{k+1} (Ax + Bu) \Big],
+$$
+a quadratic in $u$ whose minimizer is linear in the state, $u = -K_k x$ with
+$$
+K_k = (R + B^\top P_{k+1} B)^{-1} B^\top P_{k+1} A ,
+$$
+and substituting back shows $V_k$ is again quadratic, with
+$$
+P_k = Q + A^\top P_{k+1} A - A^\top P_{k+1} B\, K_k .
+$$
+This **Riccati recursion** runs once backward from $P_T = Q_f$, and the optimal control
+is then the feedback law $u_k = -K_k x_k$.
+
+```{python}
+#| label: fig-lqr
+#| fig-cap: "A cart on a frictionless track (a double integrator: position and velocity, with acceleration as the control) driven to rest at the origin by the LQR feedback law. The control pushes toward the origin, then reverses to brake."
+from optimlab.control import simulate_lqr, solve_lqr
+from optimlab.viz import trajectory_and_control_figure
+
+dt = 0.1
+A = np.array([[1.0, dt], [0.0, 1.0]])
+B = np.array([[0.0], [dt]])
+Q, R, Q_f = np.diag([1.0, 0.1]), np.array([[0.1]]), np.diag([10.0, 10.0])
+horizon = 30
+
+lqr = solve_lqr(A, B, Q, R, Q_f, horizon)
+states, controls = simulate_lqr(A, B, lqr.gains, x0=np.array([1.0, 0.0]))
+trajectory_and_control_figure(
+    np.arange(horizon + 1) * dt, states, controls, state_labels=["position", "velocity"],
+    control_labels=["acceleration"], title="Linear–quadratic regulator",
+).show()
+```
+
+The same problem can be posed directly: treat the 30 controls as the unknowns of an
+ordinary objective (simulate, sum the costs) and minimize it with BFGS.
+
+```{python}
+#| label: lqr-cross-check
+import jax.numpy as jnp
+
+from optimlab.core import Problem
+
+riccati_cost = sum(states[k] @ Q @ states[k] + controls[k] @ R @ controls[k]
+                   for k in range(horizon)) + states[-1] @ Q_f @ states[-1]
+A_j, B_j, Q_j, R_j, Qf_j = (jnp.asarray(M) for M in (A, B, Q, R, Q_f))
+
+def rollout_cost(u_flat):
+    x, cost = jnp.asarray(states[0]), 0.0
+    for u in u_flat.reshape(horizon, 1):
+        cost = cost + x @ Q_j @ x + u @ R_j @ u
+        x = A_j @ x + B_j @ u
+    return cost + x @ Qf_j @ x
+
+direct = bfgs(Problem(f=rollout_cost, x0=np.zeros(horizon)), max_iter=500)
+control_gap = np.max(np.abs(direct.x - controls.ravel()))
+```
+
+The Riccati solution costs `{python} f"{riccati_cost:.6f}"`, the direct minimization
+`{python} f"{direct.f:.6f}"`, and the two control sequences differ by at most
+`{python} f"{control_gap:.1e}"`. The recursion is far cheaper, and it gives a feedback
+law that reacts to disturbances rather than a fixed plan.
+
+### Nonlinear control by direct shooting: swinging up a pendulum
+
+A pendulum, $\ddot\vartheta = -(g/\ell)\sin\vartheta - c\,\dot\vartheta + u$, is not
+linear, so there is no Riccati recursion. **Direct shooting** treats it exactly like the
+direct LQR solve above: the unknowns are the torques $u_0, \dots, u_{T-1}$; the objective
+simulates the pendulum forward and adds the control effort to a heavy penalty for missing
+the target state (upright and at rest); BFGS minimizes it, with automatic differentiation
+supplying gradients through the simulation. This is the discretize-then-optimize approach
+of @sec-constraints, applied to a control problem.
+
+```{python}
+#| label: fig-swingup
+#| fig-cap: "Swinging a pendulum from hanging at rest (angle 0) to upright at rest (angle π) with 20 torque values found by BFGS. The torque first pushes backward to build momentum, then drives the pendulum over the top, then reverses to brake it at the top."
+from optimlab.control import simulate_pendulum, swingup_problem
+
+start, target = np.array([0.0, 0.0]), np.array([np.pi, 0.0])
+n_steps, dt_p = 20, 0.1
+swing = bfgs(swingup_problem(start, target, n_steps, dt_p, control_penalty=0.01,
+                             terminal_weight=200.0), max_iter=100)
+path = np.asarray(simulate_pendulum(start, swing.x, dt_p))
+trajectory_and_control_figure(
+    np.arange(n_steps + 1) * dt_p, path, swing.x.reshape(-1, 1),
+    state_labels=["angle", "angular velocity"], control_labels=["torque"],
+    title="Pendulum swing-up by direct shooting",
+).show()
+```
+
+The final state is an angle of `{python} f"{path[-1, 0]:.4f}"` (target $\pi \approx
+3.1416$) and an angular velocity of `{python} f"{path[-1, 1]:.4f}"`. The objective is
+non-convex, so a different starting guess for the torques could lead to a different, or
+a worse, swing.
+
+### Dynamic programming: value iteration
+
+Some decision problems are discrete: a robot on a grid chooses one of four moves at each
+step. Optimization over all move sequences is a combinatorial search, but the problem
+has the same backward structure as LQR. Let $V(s)$ be the best total discounted reward
+achievable from state $s$. It satisfies the **Bellman optimality equation**
+[@bellman1957dynamic]
+$$
+V(s) = \max_a \Big[ r(s, a) + \gamma\, V\big(s'(s, a)\big) \Big],
+$$
+where $r(s, a)$ is the reward for taking action $a$ in state $s$, $s'(s, a)$ is the
+resulting state, and $0 < \gamma < 1$ discounts future rewards. **Value iteration**
+starts from $V = 0$ and applies the right-hand side to every state repeatedly. The update
+is a contraction with factor $\gamma$ (it shrinks the distance between any two value
+functions by at least that factor), so it converges geometrically to the unique solution,
+and the best action in each state is the one achieving the maximum. Here each step costs
+1, reaching the goal pays 10, and $\gamma = 0.95$.
+
+```{python}
+#| label: fig-gridworld
+#| fig-cap: "A 5 × 5 grid with obstacles (white). Color shows the converged value of each cell and arrows the greedy policy; every arrow lies on a shortest path to the goal (star). The goal itself has value 0 because its reward is collected on arrival, not by staying there."
+from optimlab.control import GridWorld, value_iteration
+from optimlab.viz import gridworld_figure
+
+world = GridWorld(n_rows=5, n_cols=5, goal=(4, 4), obstacles={(2, 2), (2, 3), (1, 3)})
+V, policy, sweeps = value_iteration(world)
+cell = (0, 0)
+route = [cell]
+while cell != world.goal and len(route) < 25:
+    cell, _ = world.step(cell, policy[cell])
+    route.append(cell)
+gridworld_figure(world, V, policy).show()
+```
+
+Value iteration converges in `{python} sweeps` sweeps, and following the policy from the
+corner reaches the goal in `{python} len(route) - 1` moves. Value iteration is the
+starting point of reinforcement learning, which estimates $V$ from experience when the
+rewards and transitions are not known in advance.
+
+[Implementation: [`control/`]({{< var src >}}/control) ·
+Checked by: [`test_lqr.py`]({{< var tests >}}/test_lqr.py),
+[`test_trajectory_optimization.py`]({{< var tests >}}/test_trajectory_optimization.py),
+[`test_dynamic_programming.py`]({{< var tests >}}/test_dynamic_programming.py)]{.impl}
+
+## Machine learning
+
+### Backpropagation by hand
+
+Every gradient in this book came from automatic differentiation. For a neural network,
+writing out the chain rule by hand once shows what it does. For a network with layers
+$z_l = W_l a_{l-1} + b_l$ and $a_l = \tanh(z_l)$ (the last layer linear), the forward
+pass computes and stores every $z_l$ and $a_l$. The backward pass then computes
+$\delta_l = \partial f / \partial z_l$ from the output back toward the input
+[@rumelhart1986learning]:
+$$
+\delta_L = \frac{\partial f}{\partial z_L}, \qquad
+\delta_l = \big(W_{l+1}^\top \delta_{l+1}\big) \odot \big(1 - a_l^2\big), \qquad
+\frac{\partial f}{\partial W_l} = \delta_l\, a_{l-1}^\top, \quad
+\frac{\partial f}{\partial b_l} = \delta_l ,
+$$
+where $1 - a_l^2$ is the derivative of $\tanh$. Each layer's gradient reuses the
+$\delta$ of the layer above, so the whole gradient costs about as much as two forward
+passes, however many parameters there are. Reverse-mode automatic differentiation is
+this same procedure, applied mechanically to any program.
+
+```{python}
+#| label: backprop-check
+from optimlab.highdim import MLPShape, init_params, mlp_training_problem
+from optimlab.ml import manual_mlp_gradient
+
+X_bp = rng.uniform(-2, 2, size=(30, 3))
+y_bp = rng.uniform(-1, 1, size=(30, 2))
+shape_bp = MLPShape(layer_sizes=[3, 8, 5, 2])
+theta_bp = init_params(shape_bp, seed=0)
+autodiff = mlp_training_problem(shape_bp, X_bp, y_bp, seed=0).grad(theta_bp)
+by_hand = manual_mlp_gradient(theta_bp, shape_bp, X_bp, y_bp)
+backprop_gap = np.max(np.abs(autodiff - by_hand))
+```
+
+On a network with `{python} shape_bp.n_params` parameters, the hand-written backward pass
+and automatic differentiation agree to `{python} f"{backprop_gap:.0e}"`, the level of
+floating-point rounding.
+
+### Physics-informed neural networks
+
+A network can also be trained to satisfy an equation instead of to match data. To solve
+$y' = -k y$ with $y(0) = y_0$, let a network $\hat y(x; \theta)$ represent the solution
+and minimize the equation's residual at a set of collocation points $x_j$, plus the
+initial condition:
+$$
+f(\theta) = \frac{1}{M}\sum_{j=1}^M \Big( \hat y'(x_j; \theta) + k\, \hat y(x_j; \theta) \Big)^2
++ \lambda_0 \big( \hat y(0; \theta) - y_0 \big)^2 .
+$$
+The derivative $\hat y'$ is with respect to the network's *input*, computed by automatic
+differentiation just like gradients with respect to the weights [@raissi2019physics]. The
+true solution never appears in the objective.
+
+```{python}
+#| label: fig-pinn
+#| fig-cap: "A network trained only on the residual of y' = -0.5y and the condition y(0) = 2, compared with the exact solution 2·exp(-0.5x) that it never saw."
+from optimlab.ml import ode_pinn_problem, predict
+from optimlab.viz import pinn_solution_figure
+
+decay, y_init = 0.5, 2.0
+pinn_shape = MLPShape(layer_sizes=[1, 20, 20, 1])
+pinn = bfgs(ode_pinn_problem(decay, y_init, (0.0, 5.0), pinn_shape, n_collocation=50, seed=0),
+            max_iter=1000)
+xs = np.linspace(0, 5, 40)
+predicted = np.asarray(predict(pinn.x, pinn_shape, xs))
+exact = y_init * np.exp(-decay * xs)
+pinn_solution_figure(xs, predicted, exact).show()
+```
+
+The largest error against the exact solution on $[0, 5]$ is
+`{python} f"{np.max(np.abs(predicted - exact)):.1e}"`.
+
+[Implementation: [`ml/`]({{< var src >}}/ml) ·
+Checked by: [`test_backprop.py`]({{< var tests >}}/test_backprop.py),
+[`test_pinn.py`]({{< var tests >}}/test_pinn.py)]{.impl}
+
+## Economics: choosing a portfolio
+
+An investor splits a budget across $n$ assets with expected returns $\mu$ and return
+covariance $\Sigma$. A portfolio with weights $w$ has expected return $\mu^\top w$ and
+variance $w^\top \Sigma w$. Markowitz's question [@markowitz1952portfolio]: for a target
+return $\bar r$, which portfolio has the least risk?
+$$
+\min_w \; \tfrac12 w^\top \Sigma\, w
+\quad \text{s.t.} \quad
+\mathbf{1}^\top w = 1, \quad \mu^\top w = \bar r .
+$$
+This is an equality-constrained quadratic program, solved exactly by the KKT system of
+@sec-constraints. (Short sales, negative weights, are allowed here; forbidding them adds
+the inequality $w \ge 0$ and calls for a method like the barrier method.) Sweeping
+$\bar r$ traces the **minimum-variance frontier**.
+
+```{python}
+#| label: fig-efficient-frontier
+#| fig-cap: "The minimum-variance frontier for five synthetic assets. Risk is lowest at one portfolio (star) and rises for higher or lower target returns. Only the upper branch is efficient: each portfolio on the lower branch has the same risk as one on the upper branch with a higher return."
+from optimlab.problems.economics import efficient_frontier
+from optimlab.viz import efficient_frontier_figure
+
+rng_assets = np.random.default_rng(0)
+n_assets = 5
+M = rng_assets.standard_normal((n_assets, n_assets))
+cov = M @ M.T / n_assets + 0.01 * np.eye(n_assets)
+expected_returns = rng_assets.uniform(0.02, 0.15, size=n_assets)
+frontier = efficient_frontier(cov, expected_returns, np.linspace(0.03, 0.13, 21))
+efficient_frontier_figure(frontier).show()
+```
+
+[Implementation: [`problems/economics.py`]({{< var src >}}/problems/economics.py) ·
+Checked by: [`test_economics.py`]({{< var tests >}}/test_economics.py)]{.impl}
+
+## Resource allocation: proportional fairness
+
+A network shares links of limited capacity among users; user $i$ is sent at rate $x_i$
+and uses a set of links, recorded in a 0–1 matrix $R$ ($R_{ji} = 1$ if user $i$ uses
+link $j$). Maximizing total throughput $\sum_i x_i$ tends to starve users whose routes
+are expensive. **Proportional fairness** [@kelly1997charging] maximizes
+$\sum_i \log x_i$ instead:
+$$
+\max_x \; \sum_i \log x_i \quad \text{s.t.} \quad Rx \le c .
+$$
+The logarithm rewards each user's *relative* gain, so no user can be starved: as
+$x_i \to 0$, $\log x_i \to -\infty$. The KKT conditions of @sec-constraints give the
+solution a market interpretation. Stationarity reads
+$$
+\frac{1}{x_i} = \sum_j \lambda_j R_{ji} \quad\Longrightarrow\quad
+x_i = \frac{1}{\sum_{j \ni i} \lambda_j} ,
+$$
+so each link $j$ has a price $\lambda_j \ge 0$, positive only if the link is full
+(complementary slackness), and each user's rate is inversely proportional to the total
+price of the links on its route. The problem is convex with inequality constraints, so
+the barrier method solves it.
+
+```{python}
+#| label: fig-fair-allocation
+#| fig-cap: "Three users and two links of capacity 10. Users 1 and 3 each use one link; user 2 uses both. Proportional fairness gives the middle user, who consumes capacity on both links, a smaller rate than either edge user, and fills both links."
+from optimlab.problems.sociology import solve_fair_allocation
+from optimlab.viz import fair_allocation_figure
+
+routes = np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]])
+capacity = np.array([10.0, 10.0])
+fair = solve_fair_allocation(routes, capacity)
+fair_allocation_figure(routes, capacity, fair.x).show()
+```
+
+The rates are `{python} ", ".join(f"{v:.2f}" for v in fair.x)`, and both links carry
+`{python} ", ".join(f"{v:.2f}" for v in routes @ fair.x)` of their capacity of 10. With two
+equally priced full links, the middle user pays twice the price of each edge user and
+gets half the rate.
+
+[Implementation: [`problems/sociology.py`]({{< var src >}}/problems/sociology.py) ·
+Checked by: [`test_sociology.py`]({{< var tests >}}/test_sociology.py)]{.impl}
+
+## A deliberately toy problem: allocating a week
+
+The last example is personal and small, chosen to show how much of an optimization's
+answer comes from modeling decisions rather than from the algorithm.
+
+::: {.callout-important title="What this is, and is not"}
+A modeling exercise, not advice. Every number is invented. The point is that
+optimization forces every assumption into the open, where it can be questioned.
+:::
+
+Split 80 discretionary hours a week among sleep, work, exercise and social time. Each
+activity contributes with diminishing returns, $w_j\sqrt{h_j}$, and a flat penalty of 5
+applies to each activity that falls below a minimum (49 hours of sleep, 20 of work, 3 of
+exercise, 2 of social time). The utility is discontinuous at those thresholds, so
+gradient methods do not apply; this is a job for the methods of @sec-derivative-free.
+
+The budget $\sum_j h_j = 80$ can be imposed in two ways:
+
+- **as a penalty**: optimize all four hours freely and subtract $50\,\lvert \sum_j h_j -
+  80 \rvert$ from the utility, a common shortcut;
+- **exactly**: optimize the first three and set the fourth to $80$ minus their sum, so
+  every candidate satisfies the budget (with a penalty only if the fourth goes negative).
+
+```{python}
+#| label: tbl-week
+#| tbl-cap: "Utility reached by a genetic algorithm and simulated annealing under the two formulations of the budget, over three random seeds each. With the budget as a penalty, the genetic algorithm settles on compromise allocations that miss the sleep threshold, and simulated annealing usually never leaves its starting point. With the budget built in exactly, the genetic algorithm finds the best allocation every time."
+from optimlab.optimizers import genetic_algorithm, simulated_annealing
+
+activities = ["sleep", "work", "exercise", "social"]
+weights = np.array([1.4, 1.2, 1.0, 0.8])
+minimum = np.array([49.0, 20.0, 3.0, 2.0])
+budget = 80.0
+
+def per_activity(hours):
+    hours = np.asarray(hours)
+    return weights * np.sqrt(np.maximum(hours, 1e-6)) - 5.0 * (hours < minimum)
+
+def utility(hours):
+    return float(per_activity(hours).sum())
+
+def as_penalty(hours):  # all four free; the budget is only encouraged
+    return -utility(hours) + 50.0 * abs(np.sum(hours) - budget)
+
+def complete(three):  # the fourth activity takes whatever is left
+    return np.append(three, budget - np.sum(three))
+
+def exact(three):  # every candidate meets the budget
+    hours = complete(three)
+    return -utility(hours) + 50.0 * np.sum(np.maximum(-hours, 0.0))
+
+def run(method, formulation, seed):
+    f, n_free, back = ((as_penalty, 4, np.asarray) if formulation == "penalty"
+                       else (exact, 3, complete))
+    x0 = np.full(n_free, budget / 4)
+    if method == "genetic algorithm":
+        r = genetic_algorithm(Problem(f=f, x0=x0, domain=(0.0, budget)),
+                              population_size=200, max_generations=500, seed=seed)
+    else:
+        r = simulated_annealing(Problem(f=f, x0=x0), max_iter=20000, initial_temp=10.0,
+                                cooling_rate=0.999, seed=seed)
+    return back(r.x)
+
+rows, best = [], {}
+for formulation in ["penalty", "exact"]:
+    for method in ["genetic algorithm", "simulated annealing"]:
+        found = [run(method, formulation, seed) for seed in range(3)]
+        top = max(found, key=utility)
+        best[(formulation, method)] = top
+        rows.append((formulation, method, ", ".join(f"{utility(h):.2f}" for h in found),
+                     ", ".join(f"{v:.0f}" for v in top)))
+markdown_table(["budget as", "method", "utility (3 seeds)",
+                "best allocation (sleep, work, exercise, social)"], rows, align="llrl")
+```
+
+The algorithms are the same in both halves of the table; only the formulation changed.
+With the penalty, the feasible allocations form a thin sheet ($\sum_j h_j = 80$) inside a
+four-dimensional box, and almost every random proposal or mutation lands off it, where
+the penalty of 50 per hour dwarfs any gain in utility. Simulated annealing rejects nearly
+every move, and the genetic algorithm's offspring keep being pulled back toward
+compromise points. Building the constraint into the variables removes that obstacle: every
+candidate is feasible, and the search spends its effort on the actual trade-offs. The best
+allocation meets the sleep and work minimums exactly and splits the remaining hours
+between exercise and social time. How a constraint is written can matter more than which
+algorithm is used.
+
+### Two objectives instead of one
+
+The single utility hides a choice: the weights $w_j$ decide how much an hour of exercise
+is worth relative to an hour of work. Making the trade-off explicit means keeping two
+objectives, here "obligations" (sleep and work) and "fulfillment" (exercise and social
+time), and asking for the **Pareto front**: the allocations where neither objective can
+improve without the other getting worse. A simple way to trace it is the **weighted
+sum**: maximize $\beta\cdot\text{obligations} + (1-\beta)\cdot\text{fulfillment}$ for a
+sweep of $\beta \in [0, 1]$, using the exact formulation and the genetic algorithm.
+
+```{python}
+#| label: fig-pareto
+#| fig-cap: "The weighted-sum sweep over the trade-off between obligations and fulfillment. Each marker is the best allocation for one weighting. The sweep jumps from moderate obligations straight to the allocations that meet the sleep minimum: the threshold makes the front non-convex, and a weighted sum can only find points on its convex hull. A point beaten on both objectives by another, an artifact of a stochastic search, is marked separately."
+import plotly.graph_objects as go
+
+from optimlab.viz.theme import contrasting_categorical, layout_template
+
+def weighted(beta):
+    def f(three):
+        hours = complete(three)
+        parts = per_activity(hours)
+        return -(beta * parts[:2].sum() + (1 - beta) * parts[2:].sum()) \
+            + 50.0 * np.sum(np.maximum(-hours, 0.0))
+    return f
+
+betas = np.linspace(0.0, 1.0, 11)
+points = []
+for beta in betas:
+    r = genetic_algorithm(Problem(f=weighted(beta), x0=np.full(3, 20.0), domain=(0.0, budget)),
+                          population_size=100, max_generations=200, seed=1)
+    parts = per_activity(complete(r.x))
+    points.append((parts[:2].sum(), parts[2:].sum()))
+obl, ful = np.array(points).T
+dominated = np.array([np.any((obl >= a) & (ful >= b) & ((obl > a) | (ful > b)))
+                      for a, b in zip(obl, ful)])
+
+colors = contrasting_categorical()
+fig = go.Figure([
+    go.Scatter(x=obl[~dominated], y=ful[~dominated], mode="markers+lines",
+               name="weighted-sum optimum", line={"color": colors[0], "width": 2},
+               marker={"size": 9, "color": colors[0]}),
+    go.Scatter(x=obl[dominated], y=ful[dominated], mode="markers", name="dominated",
+               marker={"size": 10, "color": colors[1], "symbol": "x"}),
+])
+fig.update_layout(**layout_template(title="Obligations versus fulfillment",
+                                    xaxis_title="obligations", yaxis_title="fulfillment"))
+fig.show()
+```
+
+No point on the front is "the" answer: choosing among them is a value judgment that the
+optimization cannot make. The output of the model is the shape of the trade-off,
+including the gap the sleep threshold opens in it. Methods that find non-convex parts of
+a front (for example, constraining one objective while maximizing the other) exist, and a
+real version of this problem would also need what this model leaves out: interactions
+between activities, weeks that differ from each other, and weights that are measured
+rather than invented.
+
+## What these examples cannot show
+
+- **Model building.** Every model here was handed over complete. In practice, choosing
+  the variables, the objective and the constraints is iterative, and validating a model
+  against reality takes more effort than solving it.
+- **Scale and structure.** Real imaging, control and network problems have millions of
+  variables and exploit structure (fast transforms for blur, sparsity for networks,
+  receding horizons for control) that these small versions do not need.
+- **Uncertainty.** The models are deterministic. Robust and stochastic optimization,
+  which plan for uncertain data or dynamics, are outside this book.
+
+## Connections
+
+- **@sec-least-squares** supplies regularization for deblurring and Gauss–Newton for
+  system identification.
+- **@sec-constraints** supplies the KKT system for portfolios, the barrier method and
+  link prices for fair allocation, and discretize-then-optimize for control.
+- **@sec-derivative-free** supplies the genetic algorithm and simulated annealing for the
+  discontinuous allocation problem.
+- **@sec-choosing** summarizes which method to reach for, given a problem's class.

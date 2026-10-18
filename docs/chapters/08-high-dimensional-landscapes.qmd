@@ -1,0 +1,379 @@
+# High-Dimensional Landscapes {#sec-high-dim}
+
+Training a neural network is the largest-scale optimization done routinely today: a
+non-convex objective in millions or billions of variables, minimized by local, mostly
+first-order methods from @sec-gradient-methods. By the intuition of the earlier chapters
+this should fail. @sec-derivative-free showed a local method trapped in the nearest
+ripple of a two-dimensional landscape, and a landscape with a billion dimensions has room
+for unimaginably many ripples. Yet gradient-based training works reliably. This chapter
+collects the main pieces of the explanation, each measured on a small network: in high
+dimensions most stationary points are saddles, not minima; high-dimensional space is
+geometrically strange in ways that matter for every random probe; the curvature at a
+trained minimum is concentrated in a few directions; different minima are connected by
+low paths; and wide networks behave almost linearly. The two-dimensional pictures of the
+earlier chapters were not wrong, but they are a poor guide to this regime.
+
+## The problem
+
+A neural network $\text{net}(x; \theta)$ maps inputs to outputs through layers of
+weighted sums and nonlinearities, and all of its weights and biases together form one
+parameter vector $\theta \in \mathbb{R}^n$. Training minimizes the average loss over the
+data, here the mean squared error:
+$$
+f(\theta) = \frac{1}{N} \sum_{i=1}^N \big\lVert \text{net}(x_i; \theta) - y_i \big\rVert^2 .
+$$
+This is an ordinary objective, and nothing in the solvers of @sec-gradient-methods
+depends on $\theta$ being the weights of a network. A small network makes that concrete:
+one input, two hidden layers of 24 units with the $\tanh$ nonlinearity, one output,
+fitted to 150 noisy samples of $\sin x$.
+
+```{python}
+#| label: train-network
+import jax.numpy as jnp
+import numpy as np
+
+from optimlab.core import Problem
+from optimlab.highdim import MLPShape, forward, init_params, mlp_training_problem
+from optimlab.optimizers import adam, bfgs
+from optimlab.viz import markdown_table
+
+rng = np.random.default_rng(0)
+X = rng.uniform(-3, 3, size=(150, 1))
+noise = 0.05
+y = (np.sin(X) + noise * rng.standard_normal(X.shape)).reshape(-1, 1)
+
+shape = MLPShape(layer_sizes=[1, 24, 24, 1])
+problem = mlp_training_problem(shape, X, y, seed=0)
+f_initial = float(problem.f(problem.x0))
+trained = adam(problem, lr=0.01, max_iter=3000)
+```
+
+The network has $n =$ `{python} shape.n_params` parameters. Adam
+(@sec-gradient-methods), unmodified, lowers the loss from `{python} f"{f_initial:.3f}"` to
+`{python} f"{trained.f:.4f}"`, close to the noise variance `{python} f"{noise**2:.4f}"`,
+which is the best any model can do on this data.
+
+[Implementation: [`highdim/nets.py`]({{< var src >}}/highdim/nets.py) ·
+Checked by: [`test_nets.py`]({{< var tests >}}/test_nets.py)]{.impl}
+
+## Most stationary points are saddles
+
+@sec-geometry classified a stationary point by the signs of its Hessian's eigenvalues:
+all positive is a minimum, mixed signs a saddle. In $n$ dimensions a minimum needs *all*
+$n$ eigenvalues to be positive. If the signs behaved like independent coin flips, the
+chance would be $2^{-n}$. They are not independent, and the truth is even more extreme.
+A simple model of "a stationary point with no special structure" takes its Hessian to be
+a random symmetric matrix with Gaussian entries (the Gaussian orthogonal ensemble).
+Eigenvalues of such matrices repel each other, so pushing all of them to one side of zero
+is far less likely than for independent signs. Counting directly:
+
+```{python}
+#| label: fig-saddle-collapse
+#| fig-cap: "For random symmetric Hessians, the probability that a stationary point is a minimum (all eigenvalues positive) against dimension, from 20,000 samples per dimension. It is one half in one dimension and indistinguishable from zero by dimension 6. Almost every stationary point is a saddle."
+from optimlab.highdim import critical_point_index_stats
+from optimlab.viz import saddle_point_figure
+
+saddles = critical_point_index_stats(dims=[1, 2, 3, 4, 5, 6, 8, 10], n_samples=20000, seed=0)
+saddle_point_figure(saddles).show()
+```
+
+At dimension 1 the fraction of minima is `{python} f"{saddles.p_local_min[0]:.2f}"`; at
+dimension 6 it is `{python} f"{saddles.p_local_min[5]:.5f}"`. Real loss Hessians are not
+random matrices, so this is an argument about typical behavior, not a theorem about
+networks. Several groups report the same picture in trained networks: most stationary
+points that training encounters are saddles, and poor local minima are rare at high
+dimension [@dauphin2014identifying; @choromanska2015loss].
+
+### Why gradient descent escapes saddles
+
+Saddles would be a serious obstacle if gradient descent could get stuck on them. Near a
+saddle $\theta_s$, the gradient is approximately $\nabla^2 f(\theta_s)(\theta -
+\theta_s)$. Write the displacement in the Hessian's eigenvector basis: a gradient step
+multiplies the component along an eigenvector with eigenvalue $\lambda$ by $(1 -
+\eta\lambda)$. For $\lambda > 0$ that factor is below 1 and the component shrinks; for
+$\lambda < 0$ it is $1 + \eta\lvert\lambda\rvert > 1$, and the component **grows
+geometrically**. Any small displacement along a downhill direction, from rounding or from
+the noise of stochastic gradients, is amplified until the iterate leaves the saddle. A
+saddle slows gradient descent down (the gradient is small nearby) but does not trap it.
+Newton's method, by contrast, is attracted to saddles (@sec-geometry), one more reason it
+is not used to train networks.
+
+[Implementation: [`highdim/random_landscapes.py`]({{< var src >}}/highdim/random_landscapes.py) ·
+Checked by: [`test_random_landscapes.py`]({{< var tests >}}/test_random_landscapes.py)]{.impl}
+
+## High-dimensional space is strange
+
+Two facts about high-dimensional geometry come up whenever we probe a landscape with
+random directions.
+
+**Random directions are nearly orthogonal.** For two independent random unit vectors in
+$\mathbb{R}^n$, the cosine of the angle between them has mean 0 and variance $1/n$. In
+three dimensions random directions point every which way; in a thousand dimensions
+almost every pair is within a few degrees of perpendicular.
+
+```{python}
+#| label: fig-cosine-concentration
+#| fig-cap: "Cosine similarity between pairs of 300 random directions, in 3, 20 and 200 dimensions. As dimension grows, the distribution concentrates around zero with a spread of about 1/√n: almost every pair of random directions is nearly orthogonal."
+from optimlab.highdim import ball_shell_volume_fraction, pairwise_cosine_similarities
+from optimlab.viz import cosine_similarity_figure
+
+similarities = {d: pairwise_cosine_similarities(d, n_vectors=300, seed=0) for d in [3, 20, 200]}
+cosine_similarity_figure(similarities).show()
+```
+
+**Volume lives near the surface.** The volume of a ball of radius $r$ in $n$ dimensions
+scales as $r^n$, so the fraction of a unit ball within distance $\epsilon$ of its
+surface is $1 - (1 - \epsilon)^n$, which tends to 1:
+
+```{python}
+#| label: tbl-shell
+#| tbl-cap: "Fraction of a unit ball's volume within 10% of its surface."
+markdown_table(
+    ["dimension", "fraction in the outer 10%"],
+    [(d, f"{ball_shell_volume_fraction(d, shell_thickness=0.1):.4f}")
+     for d in [2, 3, 10, 100, 1000]],
+)
+```
+
+Both facts say that random sampling in high dimensions does not behave like random
+sampling in the plane: random points are nearly all at the same distance from the
+center, and random directions see almost nothing of any particular direction. The next
+two sections depend on this.
+
+[Implementation: [`highdim/geometry.py`]({{< var src >}}/highdim/geometry.py) ·
+Checked by: [`test_geometry.py`]({{< var tests >}}/test_geometry.py)]{.impl}
+
+## Curvature at scale: Hessian-vector products and the Lanczos algorithm
+
+The Hessian of the trained network is a square matrix with `{python} shape.n_params` rows,
+small enough to form here, but for a network with a billion parameters it would have $10^{18}$ entries. Its
+spectrum can still be studied, because two ideas avoid ever forming it.
+
+**Hessian-vector products cost about one gradient.** The product of the Hessian with a
+vector $v$ is a directional derivative of the gradient:
+$$
+\nabla^2 f(\theta)\, v = \frac{d}{d\epsilon}\, \nabla f(\theta + \epsilon v)\Big|_{\epsilon = 0} .
+$$
+Automatic differentiation computes it exactly, by differentiating the gradient
+computation in the direction $v$, at a cost of a small multiple of one gradient
+[@pearlmutter1994fast].
+
+**The Lanczos algorithm needs only those products.** It builds an orthonormal basis
+$q_1, \dots, q_m$ of the *Krylov subspace* spanned by $v, Hv, H^2v, \dots, H^{m-1}v$
+(writing $H = \nabla^2 f(\theta)$), in which $H$ becomes a small tridiagonal matrix
+[@lanczos1950iteration].
+
+::: {.callout-note title="Algorithm — Lanczos"}
+Start from a random unit vector $q_1$, with $q_0 = 0$ and $\beta_1 = 0$. For
+$j = 1, \dots, m$:
+
+1. $w = H q_j - \beta_j q_{j-1}$ (one Hessian-vector product).
+2. $a_j = q_j^\top w$, then $w \leftarrow w - a_j q_j$.
+3. In floating point, re-orthogonalize $w$ against all earlier $q_i$.
+4. $\beta_{j+1} = \lVert w \rVert$ and $q_{j+1} = w / \beta_{j+1}$.
+
+The $m \times m$ tridiagonal matrix $T_m$ with diagonal $a_1, \dots, a_m$ and
+off-diagonal $\beta_2, \dots, \beta_m$ is $H$ restricted to the Krylov subspace. Its
+eigenvalues, the **Ritz values**, approximate the eigenvalues of $H$.
+:::
+
+Each new basis vector is the previous one multiplied by $H$, which amplifies the
+components along the eigenvectors with the largest eigenvalues in absolute value. The
+Krylov subspace therefore captures the extreme eigenvalues first, and after $m \ll n$
+steps the largest and smallest Ritz values are accurate even though most of the spectrum
+is only roughly resolved. This is the same subspace that conjugate gradient
+(@sec-gradient-methods) searches.
+
+```{python}
+#| label: fig-hessian-spectrum
+#| fig-cap: "Eigenvalues of the trained network's loss Hessian, sorted from largest to smallest, estimated from 80 Lanczos steps (80 Hessian-vector products, no Hessian ever formed). A few eigenvalues stand far above the rest; the remainder form a bulk close to zero. The loss is sharply curved in a handful of directions and nearly flat in almost all others."
+from optimlab.highdim import lanczos_eigenvalues
+from optimlab.viz import hessian_spectrum_figure
+
+ritz = np.sort(lanczos_eigenvalues(problem.f, trained.x, n_iter=80, seed=0).ritz_values)[::-1]
+hessian_spectrum_figure(ritz).show()
+```
+
+The largest eigenvalue is `{python} f"{ritz[0]:.1f}"`, the tenth largest
+`{python} f"{ritz[9]:.3f}"`. This shape, a few outliers above a large bulk near zero, is
+what several groups report for real trained networks [@sagun2016eigenvalues;
+@ghorbani2019investigation]. It explains part of why training is tractable: the steep
+directions that limit the step size are few, and the many nearly flat directions are
+ones where the exact parameter values barely matter.
+
+### Sharp and flat minima
+
+The top eigenvalue measures how *sharp* a minimum is. Keskar et al. reported that
+large-batch training finds sharper minima that generalize worse [@keskar2016large]. That
+claim is contested: sharpness is not invariant to reparameterizing the network, so a
+sharp minimum can be rescaled into a flat one that computes the same function
+[@dinh2017sharp]. What sharpness does track reliably is the effect of a training choice.
+Adding an $\ell_2$ penalty on the weights, on the identical problem:
+
+```{python}
+#| label: tbl-sharp-flat
+#| tbl-cap: "Plain and ℓ₂-regularized training of the same network from the same initialization. Both minima are measured on the unregularized loss. Regularization finds a modestly flatter minimum with much smaller weights, at a clear cost in training fit."
+X_j, y_j = jnp.asarray(X), jnp.asarray(y)
+
+def mse(params):
+    return jnp.mean((forward(params, shape, X_j) - y_j) ** 2)
+
+theta0 = init_params(shape, seed=0)
+plain = adam(Problem(f=mse, x0=theta0), lr=0.01, max_iter=3000)
+regularized = adam(Problem(f=lambda p: mse(p) + 0.01 * jnp.sum(p**2), x0=theta0),
+                   lr=0.01, max_iter=3000)
+rows = []
+for name, r in [("plain", plain), ("ℓ₂-regularized (0.01)", regularized)]:
+    top = lanczos_eigenvalues(mse, r.x, n_iter=60, seed=0).ritz_values.max()
+    rows.append((name, f"{float(mse(r.x)):.4f}", f"{np.linalg.norm(r.x):.2f}", f"{top:.2f}"))
+markdown_table(["training", "training MSE", "weight norm", "top Hessian eigenvalue"], rows)
+```
+
+[Implementation: [`highdim/hessian_spectrum.py`]({{< var src >}}/highdim/hessian_spectrum.py) ·
+Checked by: [`test_hessian_spectrum.py`]({{< var tests >}}/test_hessian_spectrum.py)]{.impl}
+
+## Looking at the landscape: random slices
+
+There is no way to draw a `{python} shape.n_params`-dimensional surface, but we can draw a two-dimensional
+slice through it: pick two directions $d_1, d_2$ and plot $f(\theta^\star + a\,d_1 +
+b\,d_2)$ around the trained minimum $\theta^\star$ [@li2018visualizing].
+
+The directions need care. Networks with $\tanh$ or ReLU units have scale symmetries:
+multiplying a neuron's incoming weights by a constant changes little, so the same step
+size can mean a lot for a neuron with small weights and almost nothing for one with
+large weights. **Filter normalization** fixes this by rescaling the random direction one
+neuron at a time. For each neuron, the block of $d$ holding that neuron's incoming
+weights is rescaled to the norm of the same block in $\theta^\star$:
+$$
+d_{\text{neuron}} \leftarrow \frac{d_{\text{neuron}}}{\lVert d_{\text{neuron}} \rVert}\, \lVert \theta^\star_{\text{neuron}} \rVert ,
+$$
+and the bias entries of $d$ are set to zero. A step of size 1 then means "change every
+neuron by about its own size".
+
+```{python}
+#| label: fig-loss-landscape
+#| fig-cap: "The trained network's loss on a filter-normalized random 2D slice through its minimum (the origin of the plot), colored on a log scale. The slice looks like a smooth, nearly convex bowl."
+from optimlab.highdim import linear_interpolation_loss, loss_landscape_slice
+from optimlab.viz import loss_landscape_figure
+
+loss_slice = loss_landscape_slice(problem.f, trained.x, shape, span=1.0, resolution=40, seed=0)
+loss_landscape_figure(loss_slice).show()
+```
+
+The bowl is real, but it is partly a consequence of the geometry above. A random unit
+direction $d$ in $n$ dimensions has an expected squared overlap of only $1/n$ with any
+fixed eigenvector of the Hessian, so the curvature along it, $d^\top \nabla^2 f\, d$,
+has expected value $\operatorname{tr}(\nabla^2 f)/n$: the *average* eigenvalue. A random
+slice mostly sees the flat bulk, misses the few sharp directions, and cannot show
+saddle directions that are rare. Slices are useful for comparing minima (for example,
+plain versus regularized training), not for finding everything the landscape contains.
+
+[Implementation: [`highdim/loss_landscape.py`]({{< var src >}}/highdim/loss_landscape.py) ·
+Checked by: [`test_loss_landscape.py`]({{< var tests >}}/test_loss_landscape.py)]{.impl}
+
+## Mode connectivity: minima are not isolated
+
+Train the same network from a different random initialization and it reaches a different
+parameter vector with a similar loss. Are the two minima in separate valleys? The simplest
+test evaluates the loss along the straight line between them
+[@goodfellow2015qualitatively]. A better test lets the path bend: Garipov et al.
+[@garipov2018loss] connect two minima $\theta_A$ and $\theta_B$ with a quadratic Bézier
+curve,
+$$
+\phi(t) = (1 - t)^2\, \theta_A + 2t(1 - t)\, \theta_c + t^2\, \theta_B, \qquad t \in [0, 1],
+$$
+whose control point $\theta_c$ is free, and choose $\theta_c$ to minimize the average
+loss along the curve, $\int_0^1 f(\phi(t))\, dt$, approximated by an average over a few
+values of $t$. That is one more ordinary minimization, over the $n$ coordinates of
+$\theta_c$, solved here with BFGS.
+
+```{python}
+#| label: fig-mode-connectivity
+#| fig-cap: "Loss along two paths between independently trained minima. The straight line crosses a high barrier in the middle. The optimized curve stays close to the endpoints' loss all the way: the two minima are joined by a low path once it is allowed to bend."
+from optimlab.highdim import bezier_curve_problem, evaluate_curve_loss
+from optimlab.viz import curve_comparison_figure
+
+problem_b = mlp_training_problem(shape, X, y, seed=1)
+trained_b = adam(problem_b, lr=0.01, max_iter=3000)
+ts, straight = linear_interpolation_loss(problem.f, trained.x, trained_b.x, n_points=21)
+curve = bfgs(bezier_curve_problem(problem.f, trained.x, trained_b.x, n_samples=8), max_iter=300)
+ts_curve, bent = evaluate_curve_loss(problem.f, trained.x, curve.x, trained_b.x, n_points=21)
+curve_comparison_figure({"straight line": (ts, straight), "optimized curve": (ts_curve, bent)},
+                        title="Paths between two trained minima").show()
+```
+
+The endpoints have losses `{python} f"{trained.f:.4f}"` and `{python} f"{trained_b.f:.4f}"`.
+The straight line peaks at `{python} f"{straight.max():.3f}"`; the optimized curve peaks
+at `{python} f"{bent.max():.4f}"`. Minima found by independent runs are not isolated
+pockets that an optimizer must be lucky to reach: they sit on connected low-loss regions.
+
+[Implementation: [`highdim/mode_connectivity.py`]({{< var src >}}/highdim/mode_connectivity.py) ·
+Checked by: [`test_mode_connectivity.py`]({{< var tests >}}/test_mode_connectivity.py)]{.impl}
+
+## Wide networks behave almost linearly
+
+The last piece concerns width. Linearize the network around its initialization
+$\theta_0$:
+$$
+\text{net}(x; \theta) \approx \text{net}(x; \theta_0) + J(x)\, (\theta - \theta_0),
+\qquad J(x) = \frac{\partial\, \text{net}(x; \theta)}{\partial \theta}\Big|_{\theta_0} .
+$$
+Collect the network's outputs on the training inputs into a vector $u$. Under gradient
+descent with a small step on the squared loss, the outputs then evolve as
+$$
+\frac{du}{dt} = -K\,(u - y), \qquad K = J J^\top ,
+$$
+where $K_{ij} = J(x_i)\, J(x_j)^\top$ is the **neural tangent kernel**. If $K$ is
+positive definite and stays fixed, this is a linear system whose error decays
+exponentially, at a rate set by the smallest eigenvalue of $K$: training is a convex
+problem in disguise. Jacot et al. showed that as the width of the layers grows, $K$
+converges to a fixed kernel that does not depend on the random initialization and barely
+changes during training [@jacot2018neural], and Du et al. used this to prove that
+gradient descent reaches zero training loss in sufficiently wide networks
+[@du2019gradient]. The first part can be measured directly: how different are the
+kernels of two independent random initializations, as width grows?
+
+```{python}
+#| label: fig-ntk-concentration
+#| fig-cap: "Relative difference between the neural tangent kernels of two independent random initializations, against layer width (mean ± 1 standard deviation over 10 pairs per width, log x-axis). The difference shrinks as width grows, toward the single fixed kernel predicted for infinite width."
+from optimlab.highdim import ntk_concentration_experiment
+from optimlab.viz import ntk_concentration_figure
+
+X_ntk = rng.uniform(-1, 1, size=(20, 2))
+ntk = ntk_concentration_experiment(widths=[4, 16, 64, 256, 1024], X=X_ntk, n_in=2,
+                                   n_seed_pairs=10, seed=0)
+ntk_concentration_figure(ntk).show()
+```
+
+The relative difference falls from `{python} f"{ntk.mean_relative_diff[0]:.0%}"` at
+width 4 to `{python} f"{ntk.mean_relative_diff[-1]:.0%}"` at width 1024. This "lazy"
+regime is an idealization. Networks of practical width move further from their
+initialization and learn features the fixed kernel cannot, which is believed to be part
+of why they generalize well. But it shows rigorously that adding parameters can make
+the optimization problem easier, not harder.
+
+[Implementation: [`highdim/ntk.py`]({{< var src >}}/highdim/ntk.py) ·
+Checked by: [`test_ntk.py`]({{< var tests >}}/test_ntk.py)]{.impl}
+
+## What these examples cannot show
+
+- **Scale.** The network here has 673 parameters and trains on 150 points with the full
+  dataset at every step. Real networks have millions to billions of parameters and train
+  on noisy minibatch gradients; the noise itself shapes which minima are found.
+- **Generalization.** Every measurement here concerns the training loss. Why the minima
+  found also predict well on new data is a separate and less settled question.
+- **Architecture.** Convolutions, attention, normalization layers and residual
+  connections all change the landscape. The phenomena above have been reported across
+  architectures, but their strength varies.
+
+## Connections
+
+- **@sec-geometry**: the signs of Hessian eigenvalues, used there to classify
+  stationary points in two dimensions, are what the saddle-point argument counts.
+- **@sec-gradient-methods**: Adam trains the network; Lanczos searches the same Krylov
+  subspace as conjugate gradient; Newton's attraction to saddles is one reason it is not
+  used here.
+- **@sec-derivative-free**: the multimodal two-dimensional landscapes there are the
+  intuition this chapter corrects for high dimensions.
+- **@sec-applications** trains networks for physics problems and computes their
+  gradients by hand-written backpropagation.
