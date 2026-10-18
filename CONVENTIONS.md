@@ -130,5 +130,8 @@ A toy result is never stated as a general result.
 `freeze: auto` re-executes a chapter only when its `.qmd` changes. After changing
 `src/optimlab/`, re-render the affected chapters. `scripts/check_freeze.py` compares a
 fresh render's computed text (printed output, tables and inline numbers) against the
-committed `docs/_freeze/`. Re-render once per finished chapter, not on every edit: each
+committed `docs/_freeze/`, with a tolerance for floating-point differences between
+platforms (numbers within 5%, or both below 1e-2, match). Avoid quoting numbers that
+depend on where an iterative method happened to stop: report converged results, or
+solve exactly when a formula exists. Re-render once per finished chapter, not on every edit: each
 re-freeze adds the Plotly payloads to git history.

@@ -16,7 +16,7 @@ objective; recognize the problem class; solve it with the method that class call
 
 | application | unknowns | problem class | method | from |
 |---|---|---|---|---|
-| deblurring an image | pixel intensities | regularized least squares | quasi-Newton (BFGS) | @sec-least-squares |
+| deblurring an image | pixel intensities | regularized least squares | SVD (ridge formula) | @sec-least-squares |
 | identifying a physical system | physical constants | nonlinear least squares | Gauss–Newton | @sec-least-squares |
 | linear–quadratic control | a control sequence | quadratic, solved by recursion | Riccati recursion | this chapter |
 | swinging up a pendulum | a control sequence | smooth, non-convex | BFGS through a simulation | @sec-gradient-methods |
@@ -47,15 +47,17 @@ noise by nearly zero. Ridge (Tikhonov) regularization is the classical remedy:
 $$
 \min_x \; \frac{1}{p}\lVert Ax - b \rVert^2 + \frac{\alpha}{p}\lVert x \rVert^2 ,
 $$
-with $p$ the number of pixels. For a $24 \times 24$ image this is a 576-variable smooth
-problem, solved here with BFGS.
+with $p$ the number of pixels. Dividing both terms by $p$ does not change the minimizer,
+so this is exactly ridge regression, and for a $24 \times 24$ image the blur is a
+$576 \times 576$ matrix that the SVD formula of @sec-least-squares solves exactly.
 
 ```{python}
 #| label: fig-deblurring
 #| fig-cap: "The true image, its blurred and noisy observation, and the Tikhonov-regularized reconstruction, on a shared color scale. The reconstruction is sharper than the observation; its texture shows the noise that regularization damps but cannot remove, and its soft edges show the bias it introduces."
 import numpy as np
 
-from optimlab.inverse import blur_image, deblurring_problem
+from optimlab.inverse import blur_image
+from optimlab.linalg import condition_number, ridge_regression
 from optimlab.optimizers import bfgs
 from optimlab.viz import deblurring_figure, markdown_table
 
@@ -65,14 +67,20 @@ true_image[8:16, 8:16] = 1.0
 rng = np.random.default_rng(0)
 observed = blur_image(true_image, sigma=1.5) + 0.02 * rng.standard_normal((n_px, n_px))
 
-def reconstruct(alpha):
-    return bfgs(deblurring_problem(observed, sigma=1.5, alpha=alpha), max_iter=500).x.reshape(n_px, n_px)
+# the blur as an explicit matrix: column j is the blurred j-th basis image
+blur = np.column_stack([blur_image(e.reshape(n_px, n_px), sigma=1.5).ravel()
+                        for e in np.eye(n_px * n_px)])
+
+def reconstruct(alpha):  # exact ridge solution, ‖Ax − b‖² + α‖x‖²
+    return ridge_regression(blur, observed.ravel(), alpha).x.reshape(n_px, n_px)
 
 recovered = reconstruct(0.01)
 deblurring_figure(true_image, observed, recovered).show()
 ```
 
-The regularization strength $\alpha$ sets the bias–variance trade-off of
+The blur matrix has condition number `{python} f"{condition_number(blur):.0e}"`, so
+without regularization the noise in the observation would be amplified by up to that
+factor. The regularization strength $\alpha$ sets the bias–variance trade-off of
 @sec-least-squares, now visible as image quality:
 
 ```{python}
@@ -84,6 +92,12 @@ rows += [(f"reconstruction, α = {alpha:g}", f"{mse(reconstruct(alpha)):.5f}")
          for alpha in [1e-4, 1e-3, 1e-2, 3e-1]]
 markdown_table(["image", "mean squared error"], rows)
 ```
+
+An iterative solver such as BFGS reaches the same minimizer, but at small $\alpha$ it
+needs thousands of iterations, because the conditioning of the problem is what limits
+gradient-based methods (@sec-gradient-methods). Stopped early, it returns a smoother
+image than the exact minimizer: stopping early is itself a form of regularization, and a
+common one for large imaging problems where no exact formula is affordable.
 
 ### Identifying a physical system
 

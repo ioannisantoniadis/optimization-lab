@@ -12,6 +12,13 @@ change: printed output, tables emitted by code cells, and numbers produced by in
 `{python}` expressions, which the freeze stores already substituted into the prose. Two
 things are removed first because they differ on every render even when nothing changed:
 Plotly figure payloads (random element ids) and cell ids.
+
+Numbers are compared with a tolerance, because the committed freeze is rendered on a
+developer machine and CI renders on Linux, with different floating-point libraries.
+Two numbers match if they agree to within `REL_TOL`, or if both are below `TINY` in
+magnitude: in this book such values are round-off-scale errors and residuals (for
+example 1e-17 vs. 6e-17), whose exact digits depend on the platform, not on the code.
+All non-numeric text must match exactly.
 """
 
 import difflib
@@ -22,6 +29,24 @@ from pathlib import Path
 
 _RAW_HTML = re.compile(r"```\{=html\}.*?```", re.DOTALL)
 _CELL_ID = re.compile(r"\{#[0-9a-f]{8} ")
+_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:e[-+]?\d+)?")
+REL_TOL = 0.05
+TINY = 1e-2
+
+
+def _numbers_match(a: str, b: str) -> bool:
+    x, y = float(a), float(b)
+    if abs(x) < TINY and abs(y) < TINY:
+        return True
+    return abs(x - y) <= REL_TOL * max(abs(x), abs(y))
+
+
+def lines_match(old: str, new: str) -> bool:
+    """Equal text outside numbers; numbers equal within tolerance."""
+    old, new = old.replace("\\", ""), new.replace("\\", "")  # Markdown escapes: 3\.14
+    if _NUMBER.sub("#", old) != _NUMBER.sub("#", new):
+        return False
+    return all(_numbers_match(a, b) for a, b in zip(_NUMBER.findall(old), _NUMBER.findall(new)))
 
 
 def computed_text(html_json: Path) -> list[str]:
@@ -39,7 +64,7 @@ def main(committed: Path, fresh: Path) -> int:
             print(f"NEW   {rel} (no committed freeze to compare)")
             continue
         new, old = computed_text(fresh_file), computed_text(old_file)
-        if new != old:
+        if len(new) != len(old) or not all(lines_match(o, n) for o, n in zip(old, new)):
             failures += 1
             diff = list(difflib.unified_diff(old, new, "committed", "fresh", n=0, lineterm=""))
             print(f"STALE {rel}: {sum(1 for d in diff if d.startswith(('+', '-')))} changed lines")
