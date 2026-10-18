@@ -3,19 +3,33 @@ name: Check frozen docs outputs
 # docs/_quarto.yml uses `freeze: auto`, which re-executes a chapter only when its own
 # .qmd changes. A change to src/optimlab/ can therefore leave the committed
 # docs/_freeze/ outputs stale while every render still succeeds. This job re-executes
-# every chapter from scratch and fails if any printed output differs from the
-# committed one.
+# every page from scratch and fails if any computed text (printed output, tables,
+# inline numbers) differs from the committed freeze; see scripts/check_freeze.py.
+#
+# It runs on pull requests, so stale outputs are caught before merging, and on pushes
+# to main as a backstop. There is no schedule: Python dependencies are pinned by
+# uv.lock, so outputs cannot drift without a change to one of the paths below.
 
 on:
+  pull_request:
+    paths:
+      - "src/optimlab/**"
+      - "docs/**"
+      - "scripts/check_freeze.py"
+      - "scripts/strip_plotly_mathjax.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/freeze-check.yml"
   push:
     branches: [main]
     paths:
       - "src/optimlab/**"
+      - "docs/**"
+      - "scripts/check_freeze.py"
+      - "scripts/strip_plotly_mathjax.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/freeze-check.yml"
-  schedule:
-    - cron: "0 6 * * 1"  # weekly, Monday 06:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -47,5 +61,5 @@ jobs:
           rm -rf docs/_freeze
           quarto render docs
 
-      - name: Compare printed outputs with the committed freeze
+      - name: Compare computed outputs with the committed freeze
         run: uv run python scripts/check_freeze.py "$RUNNER_TEMP/committed_freeze" docs/_freeze

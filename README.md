@@ -152,7 +152,7 @@ Rendered outputs are cached in `docs/_freeze/` (`freeze: auto`): a chapter re-ex
 only when its own `.qmd` changes, so after changing `src/optimlab/`, re-render the
 affected chapters (or delete `docs/_freeze/` for a full re-execution) and commit the
 refreshed `_freeze/`. The `Check frozen docs outputs` workflow re-executes every chapter on
-`src/` changes and weekly, and fails if any computed text (printed output, tables, inline
+pull requests and pushes that touch `src/`, `docs/` or the check itself, and fails if any computed text (printed output, tables, inline
 numbers) no longer matches. This needs the [Quarto CLI](https://quarto.org/docs/get-started/)
 installed separately (it isn't a Python package):
 
